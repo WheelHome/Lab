@@ -1,9 +1,0 @@
-#!/bin/sh
-# format code 
-astyle -A1 -xV -r "*.cpp" "*.h" -n
-# add file to cache
-while read -r file;
-do
-  file=${file:1}
-  git add $file;
-done
