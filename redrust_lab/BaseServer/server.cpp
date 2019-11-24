@@ -1,6 +1,19 @@
 #include "tcp.h"
 #include <time.h>
 
+void Read(int connfd)
+{
+    char temp[1024] = {0};
+    int n = readn(connfd,temp,MAXLINE);
+    temp[n] = '\0';
+    std::cout<<temp<<std::endl;
+}
+void Send(int connfd){
+    std::string buf;
+    std::cin>>buf;
+    int n = writen(connfd,buf.c_str(),buf.size()+1);
+}
+
 int main(int argc, char *argv[])
 {
     int listenfd,connfd;
@@ -8,14 +21,15 @@ int main(int argc, char *argv[])
     char buff[MAXLINE];
     time_t ticks;
 
-    listenfd = socket(AF_INET,SOCK_STREAM,0);
+    //listenfd = socket(AF_INET,SOCK_STREAM,0);
+    listenfd = Socket(AF_INET,SOCK_STREAM,0);
 
     bzero(&servaddr,sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(8000);
 
-    bind(listenfd,(sockaddr*)&servaddr,sizeof(servaddr));
+    bind(listenfd,(SA*)&servaddr,sizeof(servaddr));
 
     listen(listenfd,8);
 
@@ -27,10 +41,12 @@ int main(int argc, char *argv[])
         write(connfd,buff,strlen(buff));
         close(connfd);
     }*/
+    /*
     for (;;)
     {
+
         if(!connfd)
-            connfd = accept(listenfd,(sockaddr*)nullptr,nullptr);
+            connfd = accept(listenfd,(SA*)nullptr,nullptr);
         int n = read(connfd,buff,MAXLINE);
         buff[n] = 0;
         if(n)
@@ -41,6 +57,14 @@ int main(int argc, char *argv[])
         write(connfd,sendMessage.c_str(),sendMessage.size());
         if(sendMessage=="#")
             close(connfd);
-    }
+    }*/
+    connfd = accept(listenfd,(SA*)nullptr,nullptr);
+    std::thread recv(Read,connfd);
+    std::thread send(Send,connfd);
+    /*for(;;){
+        recv.join();
+        send.join();
+    }*/
+    getchar();
     return 0;
 }
