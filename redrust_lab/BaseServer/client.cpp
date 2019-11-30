@@ -2,15 +2,19 @@
 
 void Read(int connfd)
 {
+    fflush(stdin);
     char temp[1024] = {0};
     int n = readn(connfd,temp,MAXLINE);
-    if(n<=0){
+    if(n<=0)
+    {
         return ;
     }
     temp[n] = '\0';
     std::cout<<temp<<std::endl;
 }
-void Send(int connfd){
+void Send(int connfd)
+{
+    fflush(stdin);
     std::string buf;
     std::cin>>buf;
     int n = writen(connfd,buf.c_str(),buf.size()+1);
@@ -63,10 +67,9 @@ int main(int argc, char *argv[])
     }*/
     std::thread send(Send,sockfd);
     std::thread recv(Read,sockfd);
-    /*for(;;){
-        recv.join();
-        send.join();
-    }*/
+    recv.join();
+    send.join();
+    close(sockfd);
     getchar();
     return 0;
 }
