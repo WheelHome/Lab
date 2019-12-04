@@ -5,6 +5,69 @@
 #include <WinSock2.h>
 
 #pragma comment(lib,"ws2_32.lib")
+
+enum CMD{
+    CMD_LOGIN,
+    CMD_LOGIN_RESULT,
+    CMD_LOGOUT,
+    CMD_LOGOUT_RESULT,
+    CMD_ERROR
+};
+struct DataHeader
+{
+    /* data */
+    short dataLength; 
+    short cmd;  //command
+
+};
+
+//DataPackage
+struct Login: public DataHeader
+{
+    Login()
+    {
+        dataLength = sizeof(Login);
+        cmd = CMD_LOGIN;
+    }
+    DataHeader header;
+    char userName[32];
+    char passWord[32];
+};
+
+struct LoginResult: public DataHeader
+{
+    LoginResult()
+    {
+        dataLength = sizeof(LoginResult);
+        cmd = CMD_LOGIN_RESULT;
+        result = 0;
+    }
+    int result;
+};
+
+struct Logout: public DataHeader
+{
+    Logout()
+    {
+        dataLength = sizeof(Logout);
+        cmd = CMD_LOGOUT;
+    }
+    char userName[32];
+};
+
+struct LogoutResult: public DataHeader
+{
+    LogoutResult()
+    {
+        dataLength = sizeof(LogoutResult);
+        cmd = CMD_LOGOUT_RESULT;
+        result = 0;
+    }
+    int result;
+};
+
+
+
 int main()
 {
     WORD ver = MAKEWORD(2,2);
@@ -47,27 +110,49 @@ int main()
     //char cmdBuf[128]  = {};
     while(true)
     {
-        int nLen = recv(_cSock,_recvBuf,128,0);
-        std::cout << "Recvived command  " << _recvBuf << std::cout;
+        //DataHeaderBuffer
+        char szRecv[1024] = {};
+        int nLen = recv(_cSock,szRecv,sizeof(DataHeader),0);
+        DataHeader* header = (DataHeader*)szRecv;
+        //std::cout << "Received command  " << _recvBuf << std::cout;
         if(nLen <= 0)
         {
             std::cout << "Client quited." << std::endl;
             break;
         }
-        if( strcmp(_recvBuf,"getName") == 0)
+        //std::cout << "Received command " << header.cmd << " dataLength:" << header.dataLength << std::endl;
+       /* if(nLen >= sizeof(DataHeader))
         {
-            char msgBuf[] = "I'm Server!";
-            send(_cSock,msgBuf,strlen(msgBuf)+1,0);
-        }
-        else if( strcmp(_recvBuf,"getAge") == 0 )
+
+        }*/
+        switch (header->cmd)
         {
-            char msgBuf[] = "I'm 80!";
-            send(_cSock,msgBuf,strlen(msgBuf)+1,0);
-        } 
-        else
-        {
-            char msgBuf[] = "???";
-            send(_cSock,msgBuf,strlen(msgBuf)+1,0);
+            case CMD_LOGIN:
+            {
+                recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
+                Login* login = (Login*)szRecv;
+                LoginResult ret;
+                std::cout << "Received command " << login->cmd << " dataLength:" << login->dataLength << " userName:" <<
+                    login->userName << " userPassword:" << login->passWord<< std::endl;
+                send(_cSock,(const char*)&ret,sizeof(LoginResult),0);
+                break;
+            }
+            case CMD_LOGOUT:
+            {
+                Logout* logout = (Logout*)szRecv;
+                recv(_cSock,szRecv +  sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
+                std::cout << "Received command " << logout->cmd << " dataLength:" << logout->dataLength << " userName:" <<
+                    logout->userName << std::endl;
+                LogoutResult ret;
+                //send(_cSock,(const char*)&header,sizeof(DataHeader),0);
+                send(_cSock,(const char*)&ret,sizeof(LogoutResult),0);
+                break;
+            }
+            default:
+            {
+                DataHeader header = {0,CMD_ERROR};
+                send(_cSock,(const char*)&header,sizeof(DataHeader),0);
+            }
         }
     }
     closesocket(_sock);

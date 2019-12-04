@@ -15,12 +15,30 @@ class LogEvent
 public:
     typedef std::shared_ptr<LogEvent> ptr;
     LogEvent();
-    const char* getFile()const { return m_file; }
-    int32_t getLine()const { return m_line; }
-    uint32_t getElapse()const { return m_threadId; }
-    uint32_t getFiberId()const { return m_fiberId; }
-    uint64_t getTime()const { return m_time; }
-    const std::string& getContent()const { return m_content; } 
+    const char* getFile()const
+    {
+        return m_file;
+    }
+    int32_t getLine()const
+    {
+        return m_line;
+    }
+    uint32_t getElapse()const
+    {
+        return m_threadId;
+    }
+    uint32_t getFiberId()const
+    {
+        return m_fiberId;
+    }
+    uint64_t getTime()const
+    {
+        return m_time;
+    }
+    const std::string& getContent()const
+    {
+        return m_content;
+    }
 private:
     const char* m_file = nullptr;   //文件名
     int32_t m_line = 0;             //行号

@@ -3,10 +3,11 @@
 namespace hcpw
 {
 
- const char* LogLevel::ToString(LogLevel::Level level){
-     switch (level)
-     {
-        #define XX(name)\
+const char* LogLevel::ToString(LogLevel::Level level)
+{
+    switch (level)
+    {
+#define XX(name)\
             case LogLevel::name:\
             return #name;\
             break;
@@ -15,12 +16,12 @@ namespace hcpw
         XX(WARN);
         XX(ERROR);
         XX(FATAL);
-        #undef XX
-     default:
+#undef XX
+    default:
         return "UNKNOW";
-     }
-     return "UNKNOW";
- }
+    }
+    return "UNKNOW";
+}
 Logger::Logger(const std::string name):m_name(name)
 {
 
@@ -228,14 +229,16 @@ void LogFormatter::init()
 class MessageFormatItem:public LogFormatter::FormatItem
 {
 public:
-    void format(std::ostream& os,LogLevel::Level level,LogEvent::ptr event) override{
+    void format(std::ostream& os,LogLevel::Level level,LogEvent::ptr event) override
+    {
         os << LogLevel::ToString(event->getContent());
     }
 };
 class LevelFormatItem:public LogFormatter::FormatItem
 {
 public:
-    void format(std::ostream& os,LogLevel::Level level,LogEvent::ptr event) override{
+    void format(std::ostream& os,LogLevel::Level level,LogEvent::ptr event) override
+    {
         os << LogLevel::ToString(level);
     }
 };
