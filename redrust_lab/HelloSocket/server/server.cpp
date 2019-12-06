@@ -1,15 +1,26 @@
-#define WIN32_LEAN_AND_MEAN
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-#include <windows.h>
-#include <WinSock2.h>
+#ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #define _WINSOCK_DEPRECATED_NO_WARNINGS
+    #include <windows.h>
+    #include <WinSock2.h>
+    #pragma comment(lib,"ws2_32.lib")
+#else
+    #include <unistd.h>
+    #include <vector>
+    #include <sys/types.h>          /* See NOTES */
+    #include <sys/socket.h>
+    #include <sys/select.h>
+    #include <arpa/inet.h>
+    #include <string.h>
+    #include <thread>
+    #include <iostream>
+    #define SOCKET int
+    #define closesocket close
+    #define INVALID_SOCKET (SOCKET)(~0)
+    #define SOCKET_ERROR (-1)
+#endif
 
-#pragma comment(lib,"ws2_32.lib")
-
-#include <vector>
-#include <sys/types.h>          /* See NOTES */
-#include <sys/socket.h>
-#include <sys/select.h>
 
 enum CMD
 {
@@ -78,7 +89,7 @@ struct NewUserJoin : public DataHeader
     NewUserJoin()
     {
         dataLength = sizeof(NewUserJoin);
-        cmd = CMD_NEW_USER_JOIN
+        cmd = CMD_NEW_USER_JOIN;
         sock = 0;
     }
     int sock;
@@ -91,62 +102,68 @@ std::vector<SOCKET> g_clients;
 
 int processor(SOCKET _cSock)
 {
-        //DataHeaderBuffer
-        char szRecv[1024] = {};
-        int nLen = recv(_cSock,szRecv,sizeof(DataHeader),0);
-        DataHeader* header = (DataHeader*)szRecv;
-        //std::cout << "Received command  " << _recvBuf << std::cout;
-        if(nLen <= 0)
-        {
-            std::cout << "Client quited." << std::endl;
-            return -1;
-        }
-        switch (header->cmd)
-        {
-        case CMD_LOGIN:
-        {
-            recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-            Login* login = (Login*)szRecv;
-            LoginResult ret;
-            std::cout << "Received command " << login->cmd << " dataLength:" << login->dataLength << " userName:" <<
-                      login->userName << " userPassword:" << login->passWord<< std::endl;
-            send(_cSock,(const char*)&ret,sizeof(LoginResult),0);
-            break;
-        }
-        case CMD_LOGOUT:
-        {
-            Logout* logout = (Logout*)szRecv;
-            recv(_cSock,szRecv +  sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-            std::cout << "Received command " << logout->cmd << " dataLength:" << logout->dataLength << " userName:" <<
-                      logout->userName << std::endl;
-            LogoutResult ret;
-            //send(_cSock,(const char*)&header,sizeof(DataHeader),0);
-            send(_cSock,(const char*)&ret,sizeof(LogoutResult),0);
-            break;
-        }
-        default:
-        {
-            DataHeader header = {0,CMD_ERROR};
-            send(_cSock,(const char*)&header,sizeof(DataHeader),0);
-        }
-        }
+    //DataHeaderBuffer
+    char szRecv[1024] = {};
+    int nLen = recv(_cSock,szRecv,sizeof(DataHeader),0);
+    DataHeader* header = (DataHeader*)szRecv;
+    //std::cout << "Received command  " << _recvBuf << std::cout;
+    if(nLen <= 0)
+    {
+        std::cout << "Client quited." << std::endl;
+        return -1;
     }
-
+    switch (header->cmd)
+    {
+    case CMD_LOGIN:
+    {
+        recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
+        Login* login = (Login*)szRecv;
+        LoginResult ret;
+        std::cout << "Received command " << login->cmd << " dataLength:" << login->dataLength << " userName:" <<
+                    login->userName << " userPassword:" << login->passWord<< std::endl;
+        send(_cSock,(const char*)&ret,sizeof(LoginResult),0);
+        break;
+    }
+    case CMD_LOGOUT:
+    {
+        Logout* logout = (Logout*)szRecv;
+        recv(_cSock,szRecv +  sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
+        std::cout << "Received command " << logout->cmd << " dataLength:" << logout->dataLength << " userName:" <<
+                    logout->userName << std::endl;
+        LogoutResult ret;
+        //send(_cSock,(const char*)&header,sizeof(DataHeader),0);
+        send(_cSock,(const char*)&ret,sizeof(LogoutResult),0);
+        break;
+    }
+    default:
+    {
+        DataHeader header = {0,CMD_ERROR};
+        send(_cSock,(const char*)&header,sizeof(DataHeader),0);
+    }
+    }
 }
+
 int main()
 {
+#ifdef _WIN32
     WORD ver = MAKEWORD(2,2);
     WSADATA dat;
     WSAStartup(ver,&dat);
+#endif
 
     SOCKET _sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 
     sockaddr_in _sin = {};
     _sin.sin_family = AF_INET;
-    _sin.sin_port = hton(4567);
-    _sin.sin_addr.s_un.S_addr = INADDR_ANY;
+    _sin.sin_port = htons(4567);
 
-    if(bind(_sock,(sockaddr_in*)&_sin,sizeof(sockaddr_in)) == SOCKET_ERROR)
+#ifdef _WIN32
+    _sin.sin_addr.S_un.S_addr = INADDR_ANY;
+#else
+    _sin.sin_addr.s_addr = INADDR_ANY;
+#endif
+
+    if(bind(_sock,(const sockaddr*)&_sin,sizeof(sockaddr_in)) == SOCKET_ERROR)
     {
         std::cout << "Bind Socket Error!" << std::endl;
         return -1;
@@ -196,27 +213,29 @@ int main()
             int nAddrLen = sizeof(clientAddr);
             SOCKET _cSock = INVALID_SOCKET;
 
-            _cSock = accept(_sock,(sockaddr_in*)&clientAddr,&nAddrLen);
+            _cSock = accept(_sock,(sockaddr*)&clientAddr,(socklen_t*)&nAddrLen);
 
             if(_cSock == INVALID_SOCKET)
             {
                 std::cout << "Received wrong client socket！"  << std::endl;
                 break;
             }
-
-            for(int n = 0;n < g_clients.size(); ++n)
+            else
             {
-                NewUserJoin userJoin = {};
-                send(g_clients[n],(const char*)&userJoin,sizeof(NewUserJoin),0);
+                for(int n = 0;n < g_clients.size(); ++n)
+                {
+                    NewUserJoin userJoin = {};
+                    send(g_clients[n],(const char*)&userJoin,sizeof(NewUserJoin),0);
+                }
+                std::cout << "new client joined in and it's IP=" << inet_ntoa(clientAddr.sin_addr)<< std::endl;
+                g_clients.push_back(_cSock);    
             }
-            std::cout << "new client joined in and it's IP=" << inet_ntoa(clientAddr.sin_addr)<< std::endl;
-            g_clients.push_back(_cScok);
         }
         for(int n = 0;n <= fdRead.fd_count; ++n)
         {
             if(processor(fdRead.fd_array[n]) == -1)
             {
-                auto iter = std::find(g_clients.begin(),g_clients.end(),fdRead.fd_array[i]);
+                auto iter = std::find(g_clients.begin(),g_clients.end(),fdRead.fd_array[n]);
                 if(iter != g_clients.end())
                 {
                     g_clients.erase(iter);
@@ -235,6 +254,8 @@ int main()
         closesocket(g_clients[n]);
     }
 
+#ifdef _WIN32
     WSACleanup();
+#endif
     return 0;
 }
