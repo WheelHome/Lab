@@ -1,25 +1,27 @@
 
 #ifdef _WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #define _WINSOCK_DEPRECATED_NO_WARNINGS
-    #include <windows.h>
-    #include <WinSock2.h>
-    #pragma comment(lib,"ws2_32.lib")
+#define WIN32_LEAN_AND_MEAN
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <windows.h>
+#include <WinSock2.h>
+#pragma comment(lib,"ws2_32.lib")
 #else
-    #include <unistd.h>
-    #include <vector>
-    #include <sys/types.h>          /* See NOTES */
-    #include <sys/socket.h>
-    #include <sys/select.h>
-    #include <arpa/inet.h>
-    #include <string.h>
-    #include <thread>
-    #include <iostream>
-    #define SOCKET int
-    #define closesocket close
-    #define INVALID_SOCKET (SOCKET)(~0)
-    #define SOCKET_ERROR (-1)
+#include <unistd.h>
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <arpa/inet.h>
+#define SOCKET int
+#define closesocket close
+#define INVALID_SOCKET (SOCKET)(~0)
+#define SOCKET_ERROR (-1)
 #endif
+
+#include <string.h>
+#include <thread>
+#include <iostream>
+#include <vector>
+
 enum CMD
 {
     CMD_LOGIN,
@@ -112,65 +114,66 @@ int processor(SOCKET _cSock)
     {
         recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
         LoginResult* login = (LoginResult*)szRecv;
-        std::cout << "Received command " << login->cmd << " dataLength:" << header->dataLength << std::endl;
+        std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
         break;
     }
     case CMD_LOGOUT_RESULT:
     {
         recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
         LogoutResult* logout = (LogoutResult*)szRecv;
-        std::cout << "Received command " << logout->cmd << " dataLength:" << header->dataLength << std::endl;
+        std::cout << "Received command CMD_LOGOUT_RESULT"  << " dataLength:" << header->dataLength << std::endl;
         break;
     }
     case CMD_NEW_USER_JOIN:
     {
         recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
         NewUserJoin* newUserJoin = (NewUserJoin*)szRecv;
-        std::cout << "Received command " << newUserJoin->cmd << " dataLength:" << header->dataLength  << std::endl;
+        std::cout << "Received command CMD_NEW_USER_JOIN" << " dataLength:" << header->dataLength  << std::endl;
         break;
     }
     default:
     {
     }
     }
+    return 1;
 }
 
 bool g_bExit = true;
 void cmdThread(SOCKET _sock)
 {
 
-        //thread
+    //thread
 
-        while(true)
+    while(true)
+    {
+        char cmdBuf[256] = {};
+        std::cin >> cmdBuf;
+        if(strcmp(cmdBuf,"exit") == 0)
         {
-            char cmdBuf[256] = {};
-            std::cin >> cmdBuf;
-            if(strcmp(cmdBuf,"exit") == 0)
-            {
-                std::cout << "Exited" << std::endl;
-                g_bExit = false;
-                break ;
-            }
-            else if(strcmp(cmdBuf,"login") == 0)
-            {
-                Login login;
-                strcpy(login.userName,"Jack");
-                strcpy(login.passWord,"pass");
-
-                send(_sock,(const char*)&login,sizeof(Login),0);
-            }
-            else if(strcmp(cmdBuf,"logout") == 0)
-            {
-                Logout logout;
-                strcpy(logout.userName,"Jack");
-                send(_sock,(const char*)&logout,sizeof(Logout),0);
-            }
-            else
-            {
-                std::cout << "Not supported command!" << std::endl;
-            }
+            std::cout << "Exited" << std::endl;
+            g_bExit = false;
+            break ;
         }
-        
+        else if(strcmp(cmdBuf,"login") == 0)
+        {
+            Login login;
+            strcpy(login.userName,"Jack");
+            strcpy(login.passWord,"pass");
+
+            send(_sock,(const char*)&login,sizeof(Login),0);
+        }
+        else if(strcmp(cmdBuf,"logout") == 0)
+        {
+            Logout logout;
+            strcpy(logout.userName,"Jack");
+            send(_sock,(const char*)&logout,sizeof(Logout),0);
+        }
+        else
+        {
+            std::cout << "Not supported command!" << std::endl;
+        }
+    }
+
 }
 int main()
 {
@@ -193,7 +196,7 @@ int main()
 #ifdef _WIN32
     _sin.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
 #else
-    _sin.sin_addr.s_addr = inet_addr("127.0.0.1");
+    _sin.sin_addr.s_addr = INADDR_ANY;
 #endif
 
     int ret = connect(_sock,(const sockaddr*)&_sin,sizeof(sockaddr_in));
@@ -214,7 +217,7 @@ int main()
         FD_ZERO(&fdReads);
         FD_SET(_sock,&fdReads);
         timeval t = {1,0};
-        int ret = select(_sock,nullptr,nullptr,nullptr,&t);
+        int ret = select(_sock + 1,&fdReads,nullptr,nullptr,&t);
         if(ret < 0)
         {
             std::cout << "select completed!" << std::endl;

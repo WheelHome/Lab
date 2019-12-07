@@ -1,26 +1,26 @@
 
 #ifdef _WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #define _WINSOCK_DEPRECATED_NO_WARNINGS
-    #include <windows.h>
-    #include <WinSock2.h>
-    #pragma comment(lib,"ws2_32.lib")
+#define WIN32_LEAN_AND_MEAN
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <windows.h>
+#include <WinSock2.h>
+#pragma comment(lib,"ws2_32.lib")
 #else
-    #include <unistd.h>
-    #include <vector>
-    #include <sys/types.h>          /* See NOTES */
-    #include <sys/socket.h>
-    #include <sys/select.h>
-    #include <arpa/inet.h>
-    #include <string.h>
-    #include <thread>
-    #include <iostream>
-    #define SOCKET int
-    #define closesocket close
-    #define INVALID_SOCKET (SOCKET)(~0)
-    #define SOCKET_ERROR (-1)
+#include <unistd.h>
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <arpa/inet.h>
+#define SOCKET int
+#define closesocket close
+#define INVALID_SOCKET (SOCKET)(~0)
+#define SOCKET_ERROR (-1)
 #endif
 
+#include <string.h>
+#include <thread>
+#include <iostream>
+#include <vector>
 
 enum CMD
 {
@@ -109,7 +109,7 @@ int processor(SOCKET _cSock)
     //std::cout << "Received command  " << _recvBuf << std::cout;
     if(nLen <= 0)
     {
-        std::cout << "Client quited." << std::endl;
+        std::cout << "Client socket = " << _cSock << " quited." << std::endl;
         return -1;
     }
     switch (header->cmd)
@@ -119,8 +119,8 @@ int processor(SOCKET _cSock)
         recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
         Login* login = (Login*)szRecv;
         LoginResult ret;
-        std::cout << "Received command " << login->cmd << " dataLength:" << login->dataLength << " userName:" <<
-                    login->userName << " userPassword:" << login->passWord<< std::endl;
+        std::cout << "Received command CMD_LOGIN" << " dataLength:" << login->dataLength << " userName:" <<
+                  login->userName << " userPassword:" << login->passWord<< std::endl;
         send(_cSock,(const char*)&ret,sizeof(LoginResult),0);
         break;
     }
@@ -128,8 +128,8 @@ int processor(SOCKET _cSock)
     {
         Logout* logout = (Logout*)szRecv;
         recv(_cSock,szRecv +  sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-        std::cout << "Received command " << logout->cmd << " dataLength:" << logout->dataLength << " userName:" <<
-                    logout->userName << std::endl;
+        std::cout << "Received command CMD_LOGOUT" << " dataLength:" << logout->dataLength << " userName:" <<
+                  logout->userName << std::endl;
         LogoutResult ret;
         //send(_cSock,(const char*)&header,sizeof(DataHeader),0);
         send(_cSock,(const char*)&ret,sizeof(LogoutResult),0);
@@ -141,6 +141,7 @@ int processor(SOCKET _cSock)
         send(_cSock,(const char*)&header,sizeof(DataHeader),0);
     }
     }
+    return 1;
 }
 
 int main()
@@ -168,11 +169,19 @@ int main()
         std::cout << "Bind Socket Error!" << std::endl;
         return -1;
     }
+    else
+    {
+        std::cout <<"Bind Socket:" << _sock << " success!" << std::endl;
+    }
 
     if(listen(_sock,5) == SOCKET_ERROR)
     {
         std::cout << "Listen Socket Error!" << std::endl;
         return -2;
+    }
+    else
+    {
+        std::cout <<"Listen Socket:" << _sock << " success!" << std::endl;
     }
 
 
@@ -191,15 +200,19 @@ int main()
         FD_SET(_sock,&fdRead);
         FD_SET(_sock,&fdWrite);
         FD_SET(_sock,&fdExp);
-
-        for(int n = 0;n < g_clients.size(); ++n)
+        SOCKET maxSock = _sock;
+        for(int n = 0; n < g_clients.size(); ++n)
         {
             FD_SET(g_clients[n],&fdRead);
+            if(maxSock < g_clients[n])
+            {
+                maxSock = g_clients[n];
+            }
         }
-        //nfds 
+        //nfds
 
         timeval t = {0,0};
-        int ret = select(_sock + 1,&fdRead,&fdWrite,&fdExp,&t);
+        int ret = select(maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
         if(ret < 0)
         {
             std::cout << "select error!" << std::endl;
@@ -213,7 +226,11 @@ int main()
             int nAddrLen = sizeof(clientAddr);
             SOCKET _cSock = INVALID_SOCKET;
 
+#ifdef _WIN32
+            _cSock = accept(_sock,(sockaddr*)&clientAddr,&nAddrLen);
+#else
             _cSock = accept(_sock,(sockaddr*)&clientAddr,(socklen_t*)&nAddrLen);
+#endif
 
             if(_cSock == INVALID_SOCKET)
             {
@@ -222,23 +239,26 @@ int main()
             }
             else
             {
-                for(int n = 0;n < g_clients.size(); ++n)
+                for(int n = 0; n < g_clients.size(); ++n)
                 {
                     NewUserJoin userJoin = {};
                     send(g_clients[n],(const char*)&userJoin,sizeof(NewUserJoin),0);
                 }
-                std::cout << "new client joined in and it's IP=" << inet_ntoa(clientAddr.sin_addr)<< std::endl;
-                g_clients.push_back(_cSock);    
+                std::cout << "new client socket = " << _cSock << " joined in and it's IP=" << inet_ntoa(clientAddr.sin_addr)<< std::endl;
+                g_clients.push_back(_cSock);
             }
         }
-        for(int n = 0;n <= fdRead.fd_count; ++n)
+        for(int n = 0; n < g_clients.size(); ++n)
         {
-            if(processor(fdRead.fd_array[n]) == -1)
+            if(FD_ISSET(g_clients[n],&fdRead))
             {
-                auto iter = std::find(g_clients.begin(),g_clients.end(),fdRead.fd_array[n]);
-                if(iter != g_clients.end())
+                if(processor(g_clients[n]) == -1)
                 {
-                    g_clients.erase(iter);
+                    auto iter = g_clients.begin() + n;
+                    if(iter != g_clients.end())
+                    {
+                        g_clients.erase(iter);
+                    }
                 }
             }
         }
@@ -249,7 +269,7 @@ int main()
 
          }*/
     }
-    for(size_t n = 0;n < g_clients.size(); ++n)
+    for(size_t n = 0; n < g_clients.size(); ++n)
     {
         closesocket(g_clients[n]);
     }
