@@ -16,19 +16,6 @@ void cmdThread(EasyTcpClient* client)
             g_bExit = false;
             break ;
         }
-        else if(strcmp(cmdBuf,"login") == 0)
-        {
-            Login login;
-            strcpy(login.userName,"Jack");
-            strcpy(login.passWord,"pass");
-            client->sendData(&login);
-        }
-        else if(strcmp(cmdBuf,"logout") == 0)
-        {
-            Logout logout;
-            strcpy(logout.userName,"Jack");
-            client->sendData(&logout);
-        }
         else
         {
             std::cout << "Not supported command!" << std::endl;
@@ -39,14 +26,17 @@ int main()
 {
     EasyTcpClient client;
     client.initSocket();
-    client.Connect("127.0.0.1",4567);
+    char ip[] = "127.0.0.1";
+    client.Connect(ip,4567);
     //launch thread function
     std::thread t1(cmdThread,&client);
     t1.detach();    //detach from main thread
 
+    Login login = {"jack","pass"};
     while(g_bExit)
     {
         client.onRun();
+        client.sendData(&login);
     }
     client.CLose();
     return 0;

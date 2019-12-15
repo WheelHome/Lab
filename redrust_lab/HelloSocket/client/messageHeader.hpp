@@ -1,6 +1,7 @@
 #ifndef _MESSAGEHEADER_HPP_
 #define _MESSAGEHEADER_HPP_
 
+#include <cstring>
 enum CMD
 {
     CMD_LOGIN,
@@ -13,6 +14,11 @@ enum CMD
 struct DataHeader
 {
     /* data */
+    DataHeader()
+    {
+        dataLength = sizeof(DataHeader);
+        cmd = CMD_ERROR;
+    }
     short dataLength;
     short cmd;  //command
 
@@ -26,9 +32,16 @@ struct Login: public DataHeader
         dataLength = sizeof(Login);
         cmd = CMD_LOGIN;
     }
-    DataHeader header;
+    Login(const char* loginName,const char* loginPwd)
+    {
+        strcpy(userName,loginName);
+        strcpy(passWord,loginPwd);
+        dataLength = sizeof(Login);
+        cmd = CMD_LOGIN;
+    }
     char userName[32];
     char passWord[32];
+    char data[932];
 };
 
 struct LoginResult: public DataHeader
@@ -40,6 +53,7 @@ struct LoginResult: public DataHeader
         result = 0;
     }
     int result;
+    char data[992];
 };
 
 struct Logout: public DataHeader

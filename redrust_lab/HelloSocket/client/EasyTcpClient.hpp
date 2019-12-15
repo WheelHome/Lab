@@ -161,12 +161,24 @@ public:
         }
         }
     }
+
+    //Buf minimum size 
+    #ifndef RECV_BUFF_SIZE
+    #define RECV_BUFF_SIZE 10240
+    #endif
+    //double buffer :Program setting and system setting
+    char _szRecv[RECV_BUFF_SIZE] = {};
+    //msgBuf
+    char _szMsgBuf[RECV_BUFF_SIZE * 10] = {};
+    //The msgBuf end
+    int _lastPos = 0;
+    //received data
     //receive data from server
     int recvData(SOCKET _cSock)
     {
         //DataHeaderBuffer
         char szRecv[1024] = {};
-        int nLen = recv(_cSock,szRecv,sizeof(DataHeader),0);
+        int nLen = recv(_cSock,_szRecv,RECV_BUFF_SIZE,0);
         DataHeader* header = (DataHeader*)szRecv;
         //std::cout << "Received command  " << header->cmd << std::endl;
         if(nLen <= 0)
@@ -174,8 +186,36 @@ public:
             std::cout << "Connection broken" << std::endl;
             return -1;
         }
+        //Move received data to msgBuf
+        memcpy(_szMsgBuf + _lastPos,_szRecv,nLen);
+        //Move msgBuf pointer to it's tail
+        _lastPos += nLen;
+        //Received a integrated msgHeader
+        while(_lastPos >= sizeof(DataHeader))
+        {
+            //There can be know the all msgData
+            DataHeader* header = (DataHeader*)_szMsgBuf;
+            //Received a integrated msgData
+            if(_lastPos > header->dataLength)
+            {
+                //The msgData length  is waitting to handle in msgBuf
+                int nSize = _lastPos - header->dataLength;
+                //Deal with net msg
+                onNetMsg(header);
+                //Move the untrated msgData to begin
+                memcpy(_szMsgBuf,_szMsgBuf + header->dataLength,_lastPos - header->dataLength);
+                //Pointer move to begin
+                _lastPos = nSize;
+            }
+            else
+            {
+                //Untreated msgData isn't a integrated msg.
+                return 1;
+            }
+        }
+        /*
         recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-        onNetMsg(header);
+        onNetMsg(header);*/
         return 1;
     }
 
@@ -184,7 +224,7 @@ public:
     {
         if(isRun() && header)
         {
-            std::cout << "send msg" << "cmd:" << header->cmd << std::endl;
+            std::cout << "send msg"<< header->dataLength  << "cmd:" << header->cmd<< std::endl;
             send(_sock,(const char*)header,header->dataLength,0);
         }
         return SOCKET_ERROR;
