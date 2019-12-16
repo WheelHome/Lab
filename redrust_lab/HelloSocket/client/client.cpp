@@ -4,7 +4,7 @@
 
 
 bool g_bExit = true;
-void cmdThread(EasyTcpClient* client)
+void cmdThread()
 {
     while(true)
     {
@@ -24,20 +24,44 @@ void cmdThread(EasyTcpClient* client)
 }
 int main()
 {
-    EasyTcpClient client;
-    client.initSocket();
+    const int cCount = 1000;
+    EasyTcpClient* client[cCount];
     char ip[] = "127.0.0.1";
-    client.Connect(ip,4567);
+    for(int i = 0; i < cCount; i++)
+    {
+        if(!g_bExit)
+        {
+            return 0;
+        }
+        client[i] = new EasyTcpClient();
+    }
+    for(int i = 0; i < cCount;i++)
+    {
+        if(!g_bExit)
+        {
+            return 0;
+        }
+        client[i]->Connect(ip,4567);
+    }
     //launch thread function
-    std::thread t1(cmdThread,&client);
+    std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
 
     Login login = {"jack","pass"};
     while(g_bExit)
     {
-        client.onRun();
-        client.sendData(&login);
+        for(int i = 0; i < cCount; i++)
+        {
+            client[i]->sendData(&login);
+            //client[i]->onRun();
+        }
+        //client.onRun();
+       // client.sendData(&login);
     }
-    client.CLose();
+    for(int i = 0;i < cCount;i++)
+    {
+        client[i]->CLose();
+        delete client[i];
+    }
     return 0;
 }

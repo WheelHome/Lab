@@ -2,6 +2,7 @@
 #define _EASYTCPSERVER_HPP_
 
 #ifdef _WIN32
+#define FD_SETSIZE 1024
 #define WIN32_LEAN_AND_MEAN
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <windows.h>
@@ -23,6 +24,7 @@
 #include <string.h>
 #include <iostream>
 #include "messageHeader.hpp"
+#include "CELLTimestamp.hpp"
 
 //Buf minimum size 
 #ifndef RECV_BUFF_SIZE
@@ -72,10 +74,13 @@ class EasyTcpServer
 private:
     SOCKET _sock;
     std::vector<ClientSocket*> _clients;
+    CELLTimestamp _tTime;
+    int _recvCount;
 public:
     EasyTcpServer()
     {
         _sock = INVALID_SOCKET;
+        _recvCount = 0;
     }
 
     ~EasyTcpServer()
@@ -318,25 +323,33 @@ public:
     //response net msg
     virtual void onNetMsg(SOCKET cSock,DataHeader* header)
     {
+        _recvCount ++;
+        auto t1 = _tTime.getEpalsedSecond();
+        if( t1 >= 1.0)
+        {
+            std::cout << "time = " << t1 << " socket=" << cSock << " Received package recvCount = " << _recvCount << std::endl;
+            _recvCount = 0;
+            _tTime.update();
+        }
         switch (header->cmd)
         {
         case CMD_LOGIN:
         {
             Login* login = (Login*)header;
             LoginResult ret;
-            std::cout << "Received command CMD_LOGIN" << " dataLength:" << header->dataLength << " userName:" <<
+            /*std::cout << "Received command CMD_LOGIN" << " dataLength:" << header->dataLength << " userName:" <<
                     login->userName << " userPassword:" << login->passWord<< std::endl;
-            sendData(cSock,&ret);
+            sendData(cSock,&ret);*/
             break;
         }
         case CMD_LOGOUT:
         {
             Logout* logout = (Logout*)header;
-            std::cout << "Received command CMD_LOGOUT" << " dataLength:" << logout->dataLength << " userName:" <<
+            /*std::cout << "Received command CMD_LOGOUT" << " dataLength:" << logout->dataLength << " userName:" <<
                     logout->userName << std::endl;
             LogoutResult ret;
             //send(cSock,(const char*)&header,sizeof(DataHeader),0);
-            sendData(cSock,&ret);
+            sendData(cSock,&ret);*/
             break;
         }
         case CMD_ERROR:

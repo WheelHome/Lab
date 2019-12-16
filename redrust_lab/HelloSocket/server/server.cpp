@@ -26,7 +26,7 @@ int main()
     EasyTcpServer server;
     server.initSocket();
     server.Bind(nullptr,4567);
-    server.Listen(5);
+    server.Listen(1023);
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
 
