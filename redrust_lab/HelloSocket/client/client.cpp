@@ -35,7 +35,7 @@ int main()
         }
         client[i] = new EasyTcpClient();
     }
-    for(int i = 0; i < cCount;i++)
+    for(int i = 0; i < cCount; i++)
     {
         if(!g_bExit)
         {
@@ -56,9 +56,9 @@ int main()
             //client[i]->onRun();
         }
         //client.onRun();
-       // client.sendData(&login);
+        // client.sendData(&login);
     }
-    for(int i = 0;i < cCount;i++)
+    for(int i = 0; i < cCount; i++)
     {
         client[i]->CLose();
         delete client[i];
