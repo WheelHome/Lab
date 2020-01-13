@@ -23,6 +23,9 @@
 #include <vector>
 #include <string.h>
 #include <iostream>
+#include <thread>
+#include <mutex>
+#include <atomic>
 #include "messageHeader.hpp"
 #include "CELLTimestamp.hpp"
 
@@ -31,7 +34,7 @@
 #define RECV_BUFF_SIZE 10240
 #endif
 
-
+//Client data type
 class ClientSocket
 {
 private:
@@ -67,20 +70,267 @@ public:
     {
         this->_lastPos = newPos;
     }
+
+    int sendData(DataHeader* header)
+    {
+        if( header)
+        {
+            send(_sockfd,(const char*)header,header->dataLength,0);
+        }
+        return SOCKET_ERROR;
+    }
 };
 
-class EasyTcpServer
+//net event interface
+class INetEvent 
+{
+private:
+
+public:
+    //Client quited event
+    virtual void OnNetLeave(ClientSocket* pClient) = 0;
+    //Client msg event
+    virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header) = 0;
+    //new client join event
+    virtual void OnNetJoin(ClientSocket* pClient) = 0;
+};
+
+class CellServer
 {
 private:
     SOCKET _sock;
+    //formal client queue
     std::vector<ClientSocket*> _clients;
-    CELLTimestamp _tTime;
-    int _recvCount;
+    //clients buffer queue
+    std::vector<ClientSocket*> _clientsBuff;
+    //buffer queue lock
+    std::mutex _mutex;
+    std::thread* _pThread;
+    //net event object
+    INetEvent* _pNetEvent;
 public:
+
+    void setEventObj(INetEvent* event)
+    {
+        _pNetEvent = event;
+    }
+
+    size_t getClientCount()
+    {
+        return _clients.size() + _clientsBuff.size();
+    }
+
+    void Start()
+    {
+        _pThread = new std::thread(std::mem_fun(&CellServer::onRun),this);
+
+    }
+
+    //send data to single socket
+    int sendData(SOCKET cSock,DataHeader* header)
+    {
+        if(isRun() && header)
+        {
+            send(cSock,(const char*)header,header->dataLength,0);
+        }
+        return SOCKET_ERROR;
+    }
+
+    void addClient(ClientSocket* pClient)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _clientsBuff.push_back(pClient);
+    }
+
+    CellServer(SOCKET sock = INVALID_SOCKET)
+    {
+        _sock = sock;
+        _pThread = nullptr;
+        _pNetEvent = nullptr;
+    }
+
+    ~CellServer()
+    {
+        CLose();
+        _sock = INVALID_SOCKET;
+        if(_pThread!=nullptr)
+        {
+            delete _pThread;
+        }
+        _pThread = nullptr;
+    }
+
+    //Handle net msg
+    bool onRun()
+    {
+        while(isRun())
+        {
+            //From buffer to get cilent data
+            if(_clientsBuff.size() > 0)
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                for(auto pClient : _clientsBuff)
+                {
+                    _clients.push_back(pClient);
+                }
+                _clientsBuff.clear();
+            } 
+
+            //if there not have client
+            if(_clients.empty())
+            {
+                std::chrono::milliseconds t(1);
+                std::this_thread::sleep_for(t);
+                continue;
+            }
+            // socket
+            fd_set fdRead;
+            fd_set fdWrite;
+            fd_set fdExp;
+
+            FD_ZERO(&fdRead);
+            FD_ZERO(&fdWrite);
+            FD_ZERO(&fdExp);
+
+            SOCKET maxSock = _clients[0]->getSockfd();
+            for(unsigned long int  n = 0; n < _clients.size(); ++n)
+            {
+                FD_SET(_clients[n]->getSockfd(),&fdRead);
+                if(maxSock < _clients[n]->getSockfd())
+                {
+                    maxSock = _clients[n]->getSockfd();
+                }
+            }
+            //nfds
+            timeval t = {0,10};
+            int ret = select(maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
+            if(ret < 0)
+            {
+                std::cout << "Select error!" << std::endl;
+                std::cout << errno << std::endl;
+                CLose();
+                return false;
+            }
+            for(unsigned long int n = 0; n < _clients.size(); ++n)
+            {
+                if(FD_ISSET(_clients[n]->getSockfd(),&fdRead))
+                {
+                    if(recvData(_clients[n]) == -1)
+                    {
+                        auto iter = _clients.begin() + n;
+                        if(iter != _clients.end())
+                        {
+                            if(_pNetEvent)
+                            {
+                                _pNetEvent->OnNetLeave(_clients[n]);
+                            }
+                            //closesocket(_clients[n]->getSockfd());
+                            delete _clients[n];
+                            _clients.erase(iter);
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    //isRun
+    bool isRun()
+    {
+        return _sock != INVALID_SOCKET;
+    }
+
+    //Close socket
+    void CLose()
+    {
+        if(_sock != INVALID_SOCKET)
+        {
+            for(size_t n = 0; n < _clients.size(); ++n)
+            {
+                if(_clients[n] != nullptr)
+                {
+                    closesocket(_clients[n]->getSockfd());
+                    delete _clients[n];
+                }
+            }
+            closesocket(_sock);
+
+            #ifdef _WIN32
+            WSACleanup();
+            #endif
+        }
+        _sock = INVALID_SOCKET;
+        #ifdef _WIN32
+        WSACleanup();
+        #endif
+        _clients.clear();
+    }    
+    
+    char _szRecv[RECV_BUFF_SIZE] = {};
+    int recvData(ClientSocket* pClient)
+    {
+        int nLen = recv(pClient->getSockfd(),_szRecv,RECV_BUFF_SIZE,0);
+        if(nLen <= 0)
+        {
+            //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
+            return -1;
+        }
+        //Move received data to msgBuf
+        memcpy(pClient->getMsgBuf() + pClient->getLastPos(),_szRecv,nLen);
+        //Move msgBuf pointer to it's tail
+        pClient->setLastPos(pClient->getLastPos() + nLen) ;
+        //Received a integrated msgHeader
+        while(pClient->getLastPos()  >= sizeof(DataHeader))
+        {
+            //There can be know the all msgData
+            DataHeader* header = (DataHeader*)pClient->getMsgBuf();
+            //Received a integrated msgData
+            if((int)pClient->getLastPos() > header->dataLength)
+            {
+                //The msgData length  is waitting to handle in msgBuf
+                int nSize = pClient->getLastPos() - header->dataLength;
+                //Deal with net msg
+                onNetMsg(pClient,header);
+                //Move the untrated msgData to begin
+                memcpy(pClient->getMsgBuf() ,pClient->getMsgBuf()  + header->dataLength,pClient->getLastPos() - header->dataLength);
+                //Pointer move to begin
+                pClient->setLastPos(nSize);
+            }
+            else
+            {
+                //Untreated msgData isn't a integrated msg.
+                return 1;
+            }
+        }
+        return 1;
+    }
+    //response net msg
+    virtual void onNetMsg(ClientSocket* pClient,DataHeader* header)
+    {
+        _pNetEvent->OnNetMsg(pClient,header);
+    }
+};
+
+class EasyTcpServer :public INetEvent
+{
+private:
+    SOCKET _sock;
+    //msg dealed object
+    std::vector<CellServer*> _cellServers;
+    //Time count
+    CELLTimestamp _tTime;
+public:
+    //received msg packages
+    std::atomic_int _recvCount;
+    std::atomic_int _clientCount;
+public:
+
     EasyTcpServer()
     {
         _sock = INVALID_SOCKET;
         _recvCount = 0;
+        _clientCount = 0;
     }
 
     ~EasyTcpServer()
@@ -177,12 +427,37 @@ public:
         }
         else
         {            
-            NewUserJoin userJoin = {};
-            sendDataToAll(&userJoin);
-            std::cout << "New client socket = " << cSock << " joined in and it's IP=" << inet_ntoa(clientAddr.sin_addr)<< std::endl;
-            _clients.push_back(new ClientSocket(cSock));
+            addClientToCellServer(new ClientSocket(cSock));
         }
         return cSock;
+    }
+
+    void addClientToCellServer(ClientSocket* pClient)
+    {
+        auto pMinServer = _cellServers[0];
+        //Search the cellserver that having minimum clients 
+        for(auto pCellServer : _cellServers)
+        {
+            if(pMinServer->getClientCount() > pCellServer->getClientCount())
+            {
+                pMinServer = pCellServer;
+            }
+        }
+        pMinServer->addClient(pClient);
+        OnNetJoin(pClient);
+    }
+
+    //launch CellServer
+    void Start(int nCellServer)
+    {
+        for(int n = 0; n < nCellServer; n++)
+        {
+            auto ser = new CellServer(_sock);
+            _cellServers.push_back(ser);
+            //registed msg event object
+            ser->setEventObj(this);
+            ser->Start();
+        }
     }
 
     //Close socket
@@ -190,11 +465,6 @@ public:
     {
         if(_sock != INVALID_SOCKET)
         {
-            for(size_t n = 0; n < _clients.size(); ++n)
-            {
-                closesocket(_clients[n]->getSockfd());
-                delete _clients[n];
-            }
             closesocket(_sock);
 
             #ifdef _WIN32
@@ -205,7 +475,6 @@ public:
         #ifdef _WIN32
         WSACleanup();
         #endif
-        _clients.clear();
     }
 
     //Handle net msg
@@ -213,6 +482,7 @@ public:
     {
         if(isRun())
         {
+            timeToMsg();
             // socket
             fd_set fdRead;
             fd_set fdWrite;
@@ -225,19 +495,10 @@ public:
             FD_SET(_sock,&fdRead);
             FD_SET(_sock,&fdWrite);
             FD_SET(_sock,&fdExp);
-            SOCKET maxSock = _sock;
-            for(unsigned long int  n = 0; n < _clients.size(); ++n)
-            {
-                FD_SET(_clients[n]->getSockfd(),&fdRead);
-                if(maxSock < _clients[n]->getSockfd())
-                {
-                    maxSock = _clients[n]->getSockfd();
-                }
-            }
             //nfds
 
-            timeval t = {1,0};
-            int ret = select(maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
+            timeval t = {0,10};
+            int ret = select(_sock + 1,&fdRead,&fdWrite,&fdExp,&t);
             if(ret < 0)
             {
                 std::cout << "select error!" << std::endl;
@@ -249,23 +510,6 @@ public:
                 FD_CLR(_sock,&fdRead);
                 Accept();
             }
-            for(unsigned long int n = 0; n < _clients.size(); ++n)
-            {
-                if(FD_ISSET(_clients[n]->getSockfd(),&fdRead))
-                {
-                    if(recvData(_clients[n]) == -1)
-                    {
-                        auto iter = _clients.begin() + n;
-                        if(iter != _clients.end())
-                        {
-                            _clients.erase(iter);
-                            closesocket(_clients[n]->getSockfd());
-                            delete _clients[n];
-                        }
-                    }
-                }
-            }
-            return true;
         }
         return true;
     }
@@ -276,115 +520,31 @@ public:
         return _sock != INVALID_SOCKET;
     }
 
-    //DataHeaderBuffer
-    char _szRecv[RECV_BUFF_SIZE] = {};
-    int recvData(ClientSocket* pClient)
-    {
-        int nLen = recv(pClient->getSockfd(),_szRecv,RECV_BUFF_SIZE,0);
-        //std::cout << "Received command  " << _recvBuf << std::cout;
-        if(nLen <= 0)
-        {
-            std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
-            return -1;
-        }
-        //Move received data to msgBuf
-        memcpy(pClient->getMsgBuf() + pClient->getLastPos(),_szRecv,nLen);
-        //Move msgBuf pointer to it's tail
-        pClient->setLastPos(pClient->getLastPos() + nLen) ;
-        //Received a integrated msgHeader
-        while(pClient->getLastPos()  >= sizeof(DataHeader))
-        {
-            //There can be know the all msgData
-            DataHeader* header = (DataHeader*)pClient->getMsgBuf();
-            //Received a integrated msgData
-            if((int)pClient->getLastPos() > header->dataLength)
-            {
-                //The msgData length  is waitting to handle in msgBuf
-                int nSize = pClient->getLastPos() - header->dataLength;
-                //Deal with net msg
-                onNetMsg(pClient->getSockfd(),header);
-                //Move the untrated msgData to begin
-                memcpy(pClient->getMsgBuf() ,pClient->getMsgBuf()  + header->dataLength,pClient->getLastPos() - header->dataLength);
-                //Pointer move to begin
-                pClient->setLastPos(nSize);
-            }
-            else
-            {
-                //Untreated msgData isn't a integrated msg.
-                return 1;
-            }
-        }
-        /*
-        recv(cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-        onNetMsg(cSock,header);*/
-        return 1;
-    }
-
     //response net msg
-    virtual void onNetMsg(SOCKET cSock,DataHeader* header)
+    void timeToMsg()
     {
-        _recvCount ++;
         auto t1 = _tTime.getEpalsedSecond();
         if( t1 >= 1.0)
         {
-            std::cout << "time = " << t1 << " socket=" << cSock << " Received package recvCount = " << _recvCount << std::endl;
+            std::cout << "time = " << t1 << " clients=" <<  _clientCount << " Received package recvCount = " << (int)_recvCount / t1 << std::endl;
             _recvCount = 0;
             _tTime.update();
         }
-        switch (header->cmd)
-        {
-        case CMD_LOGIN:
-        {
-            Login* login = (Login*)header;
-            LoginResult ret;
-            /*std::cout << "Received command CMD_LOGIN" << " dataLength:" << header->dataLength << " userName:" <<
-                    login->userName << " userPassword:" << login->passWord<< std::endl;
-            sendData(cSock,&ret);*/
-            break;
-        }
-        case CMD_LOGOUT:
-        {
-            Logout* logout = (Logout*)header;
-            /*std::cout << "Received command CMD_LOGOUT" << " dataLength:" << logout->dataLength << " userName:" <<
-                    logout->userName << std::endl;
-            LogoutResult ret;
-            //send(cSock,(const char*)&header,sizeof(DataHeader),0);
-            sendData(cSock,&ret);*/
-            break;
-        }
-        case CMD_ERROR:
-        {
-            std::cout << "Received command CMD_ERROR" << " dataLength:"  << header->dataLength <<  std::endl;
-        }
-        default:
-        {
-            std::cout << "Received undefine msg" << " dataLength:" << header->dataLength <<  std::endl;
-            DataHeader eheader ;
-            sendData(cSock,&eheader);
-        }
-        }
     }
 
-    //send data to single socket
-    int sendData(SOCKET cSock,DataHeader* header)
+    virtual void OnNetLeave(ClientSocket* pClient)
     {
-        if(isRun() && header)
-        {
-            send(cSock,(const char*)header,header->dataLength,0);
-        }
-        return SOCKET_ERROR;
+        _clientCount--;
     }
 
-    //send data to all existed socket
-    void sendDataToAll(DataHeader* header)
+    virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header)
     {
-        if(isRun() && header)
-        {
-            for(unsigned long int n = 0; n < _clients.size(); ++n)
-            {
-                sendData(_clients[n]->getSockfd(),header);
-            }
-        }
+        _recvCount++;
+    }
+
+    virtual void OnNetJoin(ClientSocket* pClient)
+    {
+        _clientCount++;
     }
 };
 

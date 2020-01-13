@@ -28,10 +28,12 @@ class EasyTcpClient
 {
 private:
     SOCKET _sock;
+    bool _isConnect;
 public:
     EasyTcpClient()
     {
         _sock = INVALID_SOCKET;
+        _isConnect = false;
     }
     virtual  ~EasyTcpClient()
     {
@@ -81,7 +83,9 @@ public:
         if( ret == SOCKET_ERROR)
         {
             std::cout << "Connect socket error!" << std::endl;
+            _isConnect = false;
         }
+        _isConnect = true;
         return ret;
     }
 
@@ -97,6 +101,7 @@ public:
             #endif
         }
         _sock = INVALID_SOCKET;
+        _isConnect = false;
     }
 
     //Handle net msg
@@ -107,7 +112,7 @@ public:
             fd_set fdReads;
             FD_ZERO(&fdReads);
             FD_SET(_sock,&fdReads);
-            timeval t = {1,0};
+            timeval t = {0,10};
             int ret = select(_sock + 1,&fdReads,nullptr,nullptr,&t);
             if(ret < 0)
             {
@@ -132,7 +137,7 @@ public:
 
     bool isRun()
     {
-        return _sock != INVALID_SOCKET;
+        return _sock != INVALID_SOCKET && _isConnect;
     }
 
     //response net data
@@ -147,17 +152,14 @@ public:
         }
         case CMD_LOGOUT_RESULT:
         {
-            std::cout << "Received command CMD_LOGOUT_RESULT"  << " dataLength:" << header->dataLength << std::endl;
             break;
         }
         case CMD_NEW_USER_JOIN:
         {
-            std::cout << "Received command CMD_NEW_USER_JOIN" << " dataLength:" << header->dataLength  << std::endl;
             break;
         }
         default:
         {
-            std::cout << "Received command CMD_ERROR" << std::endl;
         }
         }
     }
@@ -176,11 +178,9 @@ public:
     //receive data from server
     int recvData(SOCKET _cSock)
     {
-        //DataHeaderBuffer
-        char szRecv[1024] = {};
         int nLen = recv(_cSock,_szRecv,RECV_BUFF_SIZE,0);
-        DataHeader* header = (DataHeader*)szRecv;
-        //std::cout << "Received command  " << header->cmd << std::endl;
+        DataHeader* header = (DataHeader*)_szRecv;
+        std::cout << "Received command  " << header->cmd << std::endl;
         if(nLen <= 0)
         {
             std::cout << "Connection broken" << std::endl;
@@ -213,21 +213,22 @@ public:
                 return 1;
             }
         }
-        /*
-        recv(_cSock,szRecv + sizeof(DataHeader),header->dataLength - sizeof(DataHeader),0);
-        onNetMsg(header);*/
         return 1;
     }
 
     //send Data to server
     int sendData(DataHeader* header)
     {
+        int ret = -1;
         if(isRun() && header)
         {
-            std::cout << "send msg"<< header->dataLength  << "cmd:" << header->cmd<< std::endl;
-            send(_sock,(const char*)header,header->dataLength,0);
+            //std::cout << "send msg"<< header->dataLength  << "cmd:" << header->cmd<< std::endl;
+            ret = send(_sock,(const char*)header,header->dataLength,0);
+            if(SOCKET_ERROR == ret){
+                CLose();
+            }
         }
-        return SOCKET_ERROR;
+        return ret;
     }
 };
 
