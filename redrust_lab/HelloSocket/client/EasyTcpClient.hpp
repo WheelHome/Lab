@@ -147,7 +147,7 @@ public:
         {
         case CMD_LOGIN_RESULT:
         {
-            std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
+            //std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
             break;
         }
         case CMD_LOGOUT_RESULT:
@@ -180,7 +180,7 @@ public:
     {
         int nLen = recv(_cSock,_szRecv,RECV_BUFF_SIZE,0);
         DataHeader* header = (DataHeader*)_szRecv;
-        std::cout << "Received command  " << header->cmd << std::endl;
+        //std::cout << "Received command  " << header->cmd << std::endl;
         if(nLen <= 0)
         {
             std::cout << "Connection broken" << std::endl;

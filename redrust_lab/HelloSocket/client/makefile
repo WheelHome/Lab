@@ -10,7 +10,7 @@ OBJS = $(SRC:.cpp=.o)
 CC = g++
 
 #头文件路径
-INCLUDE = -l/usr/include
+INCLUDE = -I../server/
 
 #链接库
 LINKPARAM = -pthread
@@ -27,7 +27,7 @@ $(TARGET):$(OBJS)
 .SUFFIXES:.cpp.o
 
 .cpp.o:
-	$(CC) $(LINKPARAM)  $(CFALGS) -c $<
+	$(CC) $(LINKPARAM) $(INCLUDE) $(CFALGS) -c $<
 #定义清理函数
 clean:
 	rm $(OBJS) $(TARGET)

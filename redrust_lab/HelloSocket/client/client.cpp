@@ -1,11 +1,15 @@
 
 #include "messageHeader.hpp"
 #include "EasyTcpClient.hpp"
+#include "CELLTimestamp.hpp"
 
+#include <atomic>
 
 #define cCount 1000
-#define tCount 8
+#define tCount 4
 bool g_bExit = true;
+std::atomic_int sendCount(0);
+std::atomic_int readyCount(0);
 void cmdThread()
 {
     while(g_bExit)
@@ -42,6 +46,17 @@ void sendThread(int id)//four thread 1~4
             std::cout <<"Client="<< i << "Connect error" << std::endl;
         }
     }
+
+    std::cout << "thread=" << id << " Connect<begin=" << begin << ",end=" << end << std::endl; 
+
+    readyCount++;
+    while(readyCount < tCount)
+    {
+        //wait for other thread to ready for sending data
+        std::chrono::microseconds t(10);
+        std::this_thread::sleep_for(t);
+    }
+
     Login login = {"jack","pass"};
     while(g_bExit)
     {
@@ -51,6 +66,10 @@ void sendThread(int id)//four thread 1~4
             {
                 std::cout << "Send error" << std::endl;
                 std::cout << errno << std::endl;
+            }
+            else
+            {
+                sendCount++;
             }
             client[i]->onRun();
         }
@@ -68,16 +87,24 @@ int main()
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
 
-    for(int n = 0;n < tCount;n++)
+    for(int n = 0; n < tCount; n++)
     {
         //launch send thread
         std::thread t1(sendThread,n + 1);
         t1.detach();    //detach from main thread
     }
 
+    CELLTimestamp tTime;
     while(g_bExit)
     {
-        sleep(100);
+        auto t = tTime.getEpalsedSecond();
+        if(t >= 1.0)
+        {
+            std::cout << "thread=" <<tCount << " clients=" << cCount << " time=" << t << " send=" << sendCount << std::endl;
+            tTime.update();
+            sendCount = 0;
+        }
+        sleep(1);
     }
     return 0;
 }

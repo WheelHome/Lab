@@ -26,6 +26,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <map>
 #include "messageHeader.hpp"
 #include "CELLTimestamp.hpp"
 
@@ -91,6 +92,8 @@ public:
     virtual void OnNetLeave(ClientSocket* pClient) = 0;
     //Client msg event
     virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header) = 0;
+    //recv event
+    virtual void OnNetRecv(ClientSocket* pClient) = 0;
     //new client join event
     virtual void OnNetJoin(ClientSocket* pClient) = 0;
 };
@@ -100,7 +103,7 @@ class CellServer
 private:
     SOCKET _sock;
     //formal client queue
-    std::vector<ClientSocket*> _clients;
+	std::map<SOCKET,ClientSocket*> _clients;
     //clients buffer queue
     std::vector<ClientSocket*> _clientsBuff;
     //buffer queue lock
@@ -160,9 +163,15 @@ public:
         _pThread = nullptr;
     }
 
+    //backup fdRead
+    fd_set _fdRead_bak;
+    //client list change
+    bool _clients_change = true;
+    SOCKET _maxSock; 
     //Handle net msg
     bool onRun()
     {
+        _clients_change = false;
         while(isRun())
         {
             //From buffer to get cilent data
@@ -171,9 +180,10 @@ public:
                 std::lock_guard<std::mutex> lock(_mutex);
                 for(auto pClient : _clientsBuff)
                 {
-                    _clients.push_back(pClient);
+					_clients[pClient->getSockfd()] = pClient;
                 }
                 _clientsBuff.clear();
+                _clients_change = true;
             } 
 
             //if there not have client
@@ -192,18 +202,27 @@ public:
             FD_ZERO(&fdWrite);
             FD_ZERO(&fdExp);
 
-            SOCKET maxSock = _clients[0]->getSockfd();
-            for(unsigned long int  n = 0; n < _clients.size(); ++n)
+            if(_clients_change)
             {
-                FD_SET(_clients[n]->getSockfd(),&fdRead);
-                if(maxSock < _clients[n]->getSockfd())
-                {
-                    maxSock = _clients[n]->getSockfd();
-                }
+                _clients_change = false;
+				_maxSock = _clients.begin()->second->getSockfd();
+				for (auto iter : _clients)
+				{
+					FD_SET(iter.second->getSockfd(), &fdRead);
+					if (_maxSock < iter.second->getSockfd())
+					{
+						_maxSock = iter.second->getSockfd();
+					}
+				}
+                memcpy(&_fdRead_bak,&fdRead,sizeof(fd_set));
+            }
+            else
+            {
+                memcpy(&fdRead,&_fdRead_bak,sizeof(fd_set));
             }
             //nfds
             timeval t = {0,10};
-            int ret = select(maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
+            int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
             if(ret < 0)
             {
                 std::cout << "Select error!" << std::endl;
@@ -211,26 +230,50 @@ public:
                 CLose();
                 return false;
             }
-            for(unsigned long int n = 0; n < _clients.size(); ++n)
+            else if (ret == 0)
             {
-                if(FD_ISSET(_clients[n]->getSockfd(),&fdRead))
-                {
-                    if(recvData(_clients[n]) == -1)
-                    {
-                        auto iter = _clients.begin() + n;
-                        if(iter != _clients.end())
-                        {
-                            if(_pNetEvent)
-                            {
-                                _pNetEvent->OnNetLeave(_clients[n]);
-                            }
-                            //closesocket(_clients[n]->getSockfd());
-                            delete _clients[n];
-                            _clients.erase(iter);
-                        }
-                    }
-                }
+                continue;
             }
+            
+            #ifdef _WIN32
+			for (int n = 0; n < fdRead.fd_count; n++)
+			{
+				auto iter  = _clients.find(fdRead.fd_array[n]);
+				if (iter != _clients.end())
+				{
+					if (-1 == RecvData(iter->second))
+					{
+						if (_pNetEvent)
+							_pNetEvent->OnNetLeave(iter->second);
+						_clients_change = true;
+						_clients.erase(iter->first);
+					}
+				}else {
+					printf("error. if (iter != _clients.end())\n");
+				}
+
+			}
+            #else
+			std::vector<ClientSocket*> temp;
+			for (auto iter : _clients)
+			{
+				if (FD_ISSET(iter.second->getSockfd(), &fdRead))
+				{
+					if (-1 == recvData(iter.second))
+					{
+						if (_pNetEvent)
+							_pNetEvent->OnNetLeave(iter.second);
+						_clients_change = true;
+						temp.push_back(iter.second);
+					}
+				}
+			}
+			for (auto pClient : temp)
+			{
+				_clients.erase(pClient->getSockfd());
+				delete pClient;
+			}
+            #endif
         }
         return true;
     }
@@ -246,18 +289,22 @@ public:
     {
         if(_sock != INVALID_SOCKET)
         {
-            for(size_t n = 0; n < _clients.size(); ++n)
-            {
-                if(_clients[n] != nullptr)
-                {
-                    closesocket(_clients[n]->getSockfd());
-                    delete _clients[n];
-                }
-            }
-            closesocket(_sock);
-
             #ifdef _WIN32
-            WSACleanup();
+			for (auto iter : _clients)
+			{
+				closesocket(iter.second->sockfd());
+				delete iter.second;
+			}
+			//关闭套节字closesocket
+			closesocket(_sock);
+            #else
+			for (auto iter : _clients)
+			{
+				close(iter.second->getSockfd());
+				delete iter.second;
+			}
+			//关闭套节字closesocket
+			close(_sock);
             #endif
         }
         _sock = INVALID_SOCKET;
@@ -271,6 +318,7 @@ public:
     int recvData(ClientSocket* pClient)
     {
         int nLen = recv(pClient->getSockfd(),_szRecv,RECV_BUFF_SIZE,0);
+        _pNetEvent->OnNetRecv(pClient);
         if(nLen <= 0)
         {
             //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
@@ -320,10 +368,11 @@ private:
     std::vector<CellServer*> _cellServers;
     //Time count
     CELLTimestamp _tTime;
-public:
+protected:
     //received msg packages
     std::atomic_int _recvCount;
     std::atomic_int _clientCount;
+    std::atomic_int _msgCount;
 public:
 
     EasyTcpServer()
@@ -331,6 +380,7 @@ public:
         _sock = INVALID_SOCKET;
         _recvCount = 0;
         _clientCount = 0;
+        _msgCount = 0;
     }
 
     ~EasyTcpServer()
@@ -472,6 +522,9 @@ public:
             #endif
         }
         _sock = INVALID_SOCKET;
+        _recvCount = 0;
+        _clientCount = 0;
+        _msgCount = 0;
         #ifdef _WIN32
         WSACleanup();
         #endif
@@ -526,8 +579,9 @@ public:
         auto t1 = _tTime.getEpalsedSecond();
         if( t1 >= 1.0)
         {
-            std::cout << "time = " << t1 << " clients=" <<  _clientCount << " Received package recvCount = " << (int)_recvCount / t1 << std::endl;
+            std::cout << "time = " << t1 << " clients=" <<  _clientCount << " Received package recvCount = " << (int)_recvCount / t1 << " msgCount=" << (int)_msgCount / t1 << std::endl;
             _recvCount = 0;
+            _msgCount = 0;
             _tTime.update();
         }
     }
@@ -539,7 +593,7 @@ public:
 
     virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header)
     {
-        _recvCount++;
+        _msgCount++;
     }
 
     virtual void OnNetJoin(ClientSocket* pClient)
