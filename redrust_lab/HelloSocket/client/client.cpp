@@ -6,7 +6,7 @@
 #include <atomic>
 
 #define cCount 1000
-#define tCount 4
+#define tCount 8
 bool g_bExit = true;
 std::atomic_int sendCount(0);
 std::atomic_int readyCount(0);
@@ -47,7 +47,7 @@ void sendThread(int id)//four thread 1~4
         }
     }
 
-    std::cout << "thread=" << id << " Connect<begin=" << begin << ",end=" << end << std::endl; 
+    std::cout << "thread=" << id << " Connect<begin=" << begin << ",end=" << end << std::endl;
 
     readyCount++;
     while(readyCount < tCount)
@@ -58,6 +58,7 @@ void sendThread(int id)//four thread 1~4
     }
 
     Login login = {"jack","pass"};
+    const int nLen = sizeof(login);
     while(g_bExit)
     {
         for(int i = begin; i < end; i++)
@@ -100,7 +101,7 @@ int main()
         auto t = tTime.getEpalsedSecond();
         if(t >= 1.0)
         {
-            std::cout << "thread=" <<tCount << " clients=" << cCount << " time=" << t << " send=" << sendCount << std::endl;
+            std::cout << "thread=" << tCount << " clients=" << cCount << " time=" << t << " send=" << (int)sendCount / t  << std::endl;
             tTime.update();
             sendCount = 0;
         }

@@ -8,20 +8,18 @@ public:
 
     virtual void OnNetLeave(ClientSocket* pClient)
     {
-        _clientCount--;
-        std::cout << "client leave " << pClient->getSockfd() << std::endl;
+        EasyTcpServer::OnNetLeave(pClient);
     }
 
-    virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header)
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocket* pClient,DataHeader* header)
     {
-        _msgCount++;
+        EasyTcpServer::OnNetMsg(pCellServer,pClient,header);
         switch (header->cmd)
         {
         case CMD_LOGIN:
         {
-            Login* login = (Login*)header;
-            LoginResult ret;
-            pClient->sendData(&ret);
+            LoginResult* ret = new LoginResult();
+            pCellServer->addSendTask(pClient,header);
             break;
         }
         case CMD_LOGOUT:
@@ -40,14 +38,13 @@ public:
 
     virtual void OnNetJoin(ClientSocket* pClient)
     {
-        _clientCount++;
-        std::cout << "client join " << pClient->getSockfd() << std::endl;
+        EasyTcpServer::OnNetJoin(pClient);
     }
 
 
     virtual void OnNetRecv(ClientSocket* pClient)
     {
-        _recvCount++;
+        EasyTcpServer::OnNetRecv(pClient);
     }
 private:
 
@@ -79,9 +76,10 @@ int main()
     server.initSocket();
     server.Bind(nullptr,4567);
     server.Listen(1000);
-    server.Start(4);
+    server.Start(1);
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
+
 
     while(g_bExit)
     {

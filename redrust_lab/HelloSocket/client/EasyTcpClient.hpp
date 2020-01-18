@@ -168,8 +168,6 @@ public:
     #ifndef RECV_BUFF_SIZE
     #define RECV_BUFF_SIZE 10240
     #endif
-    //double buffer :Program setting and system setting
-    char _szRecv[RECV_BUFF_SIZE] = {};
     //msgBuf
     char _szMsgBuf[RECV_BUFF_SIZE * 10] = {};
     //The msgBuf end
@@ -178,16 +176,13 @@ public:
     //receive data from server
     int recvData(SOCKET _cSock)
     {
-        int nLen = recv(_cSock,_szRecv,RECV_BUFF_SIZE,0);
-        DataHeader* header = (DataHeader*)_szRecv;
-        //std::cout << "Received command  " << header->cmd << std::endl;
+        char* szRecv = _szMsgBuf + _lastPos;
+        int nLen = recv(_cSock,szRecv,(RECV_BUFF_SIZE * 5) - _lastPos ,0);
         if(nLen <= 0)
         {
             std::cout << "Connection broken" << std::endl;
             return -1;
         }
-        //Move received data to msgBuf
-        memcpy(_szMsgBuf + _lastPos,_szRecv,nLen);
         //Move msgBuf pointer to it's tail
         _lastPos += nLen;
         //Received a integrated msgHeader
@@ -222,7 +217,6 @@ public:
         int ret = -1;
         if(isRun() && header)
         {
-            //std::cout << "send msg"<< header->dataLength  << "cmd:" << header->cmd<< std::endl;
             ret = send(_sock,(const char*)header,header->dataLength,0);
             if(SOCKET_ERROR == ret){
                 CLose();

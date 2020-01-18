@@ -27,61 +27,16 @@
 #include <mutex>
 #include <atomic>
 #include <map>
+#include <signal.h>
+
 #include "messageHeader.hpp"
 #include "CELLTimestamp.hpp"
+#include "ClientSocket.hpp"
+#include "CellSendMsgToClientTask.hpp"
+#include "CellTask.hpp"
 
-//Buf minimum size 
-#ifndef RECV_BUFF_SIZE
-#define RECV_BUFF_SIZE 10240
-#endif
 
-//Client data type
-class ClientSocket
-{
-private:
-    SOCKET _sockfd;//socket fd_set desc set
-    //msgBuf
-    char _szMsgBuf[RECV_BUFF_SIZE * 10] = {};
-    //The msgBuf end
-    long unsigned int _lastPos = 0;
-public:
-    ClientSocket(SOCKET _sockfd = INVALID_SOCKET)
-    {
-        this->_sockfd = _sockfd;
-        bzero(_szMsgBuf,sizeof(_szMsgBuf));
-        this->_lastPos = 0;
-    }
-
-    SOCKET getSockfd()
-    {
-        return _sockfd;
-    }
-
-    char* getMsgBuf()
-    {
-        return _szMsgBuf;
-    }
-
-    long unsigned int getLastPos()
-    {
-        return _lastPos;
-    }
-    
-    void setLastPos(int newPos)
-    {
-        this->_lastPos = newPos;
-    }
-
-    int sendData(DataHeader* header)
-    {
-        if( header)
-        {
-            send(_sockfd,(const char*)header,header->dataLength,0);
-        }
-        return SOCKET_ERROR;
-    }
-};
-
+class CellServer;
 //net event interface
 class INetEvent 
 {
@@ -91,12 +46,13 @@ public:
     //Client quited event
     virtual void OnNetLeave(ClientSocket* pClient) = 0;
     //Client msg event
-    virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header) = 0;
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocket* pClient,DataHeader* header) = 0;
     //recv event
     virtual void OnNetRecv(ClientSocket* pClient) = 0;
     //new client join event
     virtual void OnNetJoin(ClientSocket* pClient) = 0;
 };
+
 
 class CellServer
 {
@@ -111,7 +67,14 @@ private:
     std::thread* _pThread;
     //net event object
     INetEvent* _pNetEvent;
+
+    CellTaskServer* _taskServer;
 public:
+
+    void addSendTask(ClientSocket* client,DataHeader* header)
+    {
+        _taskServer->addTask(client,header);
+    }
 
     void setEventObj(INetEvent* event)
     {
@@ -126,7 +89,8 @@ public:
     void Start()
     {
         _pThread = new std::thread(std::mem_fun(&CellServer::onRun),this);
-
+        _taskServer = new CellTaskServer();
+        _taskServer->Start();
     }
 
     //send data to single socket
@@ -134,6 +98,10 @@ public:
     {
         if(isRun() && header)
         {
+            sigset_t set;
+            sigemptyset(&set);
+            sigaddset(&set, SIGPIPE);
+            sigprocmask(SIG_BLOCK, &set, NULL);
             send(cSock,(const char*)header,header->dataLength,0);
         }
         return SOCKET_ERROR;
@@ -150,6 +118,7 @@ public:
         _sock = sock;
         _pThread = nullptr;
         _pNetEvent = nullptr;
+        _taskServer = nullptr;
     }
 
     ~CellServer()
@@ -160,7 +129,12 @@ public:
         {
             delete _pThread;
         }
+        if(_taskServer!=nullptr)
+        {
+            delete _taskServer;
+        }
         _pThread = nullptr;
+        _taskServer = nullptr;
     }
 
     //backup fdRead
@@ -169,23 +143,23 @@ public:
     bool _clients_change = true;
     SOCKET _maxSock; 
     //Handle net msg
+
     bool onRun()
     {
-        _clients_change = false;
         while(isRun())
         {
             //From buffer to get cilent data
-            if(_clientsBuff.size() > 0)
+            if(!_clientsBuff.empty())
             {
                 std::lock_guard<std::mutex> lock(_mutex);
                 for(auto pClient : _clientsBuff)
                 {
-					_clients[pClient->getSockfd()] = pClient;
+                    if(pClient != nullptr)
+                        _clients[pClient->getSockfd()] = pClient;
                 }
                 _clientsBuff.clear();
                 _clients_change = true;
             } 
-
             //if there not have client
             if(_clients.empty())
             {
@@ -205,24 +179,28 @@ public:
             if(_clients_change)
             {
                 _clients_change = false;
-				_maxSock = _clients.begin()->second->getSockfd();
-				for (auto iter : _clients)
-				{
-					FD_SET(iter.second->getSockfd(), &fdRead);
-					if (_maxSock < iter.second->getSockfd())
-					{
-						_maxSock = iter.second->getSockfd();
-					}
-				}
-                memcpy(&_fdRead_bak,&fdRead,sizeof(fd_set));
+                if(_clients.begin()->second != nullptr)
+                    _maxSock = _clients.begin()->second->getSockfd();
+                for (auto iter : _clients)
+                {
+                    if(iter.second != nullptr)
+                    {
+                        FD_SET(iter.second->getSockfd(), &fdRead);
+                        if (_maxSock < iter.second->getSockfd())
+                        {
+                            _maxSock = iter.second->getSockfd();
+                        }
+                    }
+                }
+                memcpy(&_fdRead_bak,&fdRead,sizeof(fdRead));
             }
             else
             {
-                memcpy(&fdRead,&_fdRead_bak,sizeof(fd_set));
+                memcpy(&fdRead,&_fdRead_bak,sizeof(_fdRead_bak));
             }
             //nfds
             timeval t = {0,10};
-            int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
+            int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,nullptr);
             if(ret < 0)
             {
                 std::cout << "Select error!" << std::endl;
@@ -236,43 +214,44 @@ public:
             }
             
             #ifdef _WIN32
-			for (int n = 0; n < fdRead.fd_count; n++)
-			{
-				auto iter  = _clients.find(fdRead.fd_array[n]);
-				if (iter != _clients.end())
-				{
-					if (-1 == RecvData(iter->second))
-					{
-						if (_pNetEvent)
-							_pNetEvent->OnNetLeave(iter->second);
-						_clients_change = true;
-						_clients.erase(iter->first);
-					}
-				}else {
-					printf("error. if (iter != _clients.end())\n");
-				}
+            for (int n = 0; n < fdRead.fd_count; n++)
+            {
+                auto iter  = _clients.find(fdRead.fd_array[n]);
+                if (iter != _clients.end())
+                {
+                    if (-1 == RecvData(iter->second))
+                    {
+                        if (_pNetEvent)
+                            _pNetEvent->OnNetLeave(iter->second);
+                        _clients_change = true;
+                        _clients.erase(iter->first);
+                    }
+                }else {
+                    printf("error. if (iter != _clients.end())\n");
+                }
 
-			}
+            }
             #else
-			std::vector<ClientSocket*> temp;
-			for (auto iter : _clients)
-			{
-				if (FD_ISSET(iter.second->getSockfd(), &fdRead))
-				{
-					if (-1 == recvData(iter.second))
-					{
-						if (_pNetEvent)
-							_pNetEvent->OnNetLeave(iter.second);
-						_clients_change = true;
-						temp.push_back(iter.second);
-					}
-				}
-			}
-			for (auto pClient : temp)
-			{
-				_clients.erase(pClient->getSockfd());
-				delete pClient;
-			}
+            std::vector<ClientSocket*> temp(_clients.size());
+            for (auto iter : _clients)
+            {
+                if (iter.second != nullptr && FD_ISSET(iter.second->getSockfd(), &fdRead))
+                {
+                    if (-1 == recvData(iter.second))
+                    {
+                        if (_pNetEvent)
+                            _pNetEvent->OnNetLeave(iter.second);
+                        _clients_change = true;
+                        temp.push_back(iter.second);
+                    }
+                }
+            }
+            for (auto pClient : temp)
+            {
+                _clients.erase(pClient->getSockfd());
+                closesocket(pClient->getSockfd());
+                delete pClient;
+            }
             #endif
         }
         return true;
@@ -290,21 +269,26 @@ public:
         if(_sock != INVALID_SOCKET)
         {
             #ifdef _WIN32
-			for (auto iter : _clients)
-			{
-				closesocket(iter.second->sockfd());
-				delete iter.second;
-			}
-			//关闭套节字closesocket
-			closesocket(_sock);
+            for (auto iter : _clients)
+            {
+                closesocket(iter.second->sockfd());
+                delete iter.second;
+            }
+            //关闭套节字closesocket
+            closesocket(_sock);
             #else
-			for (auto iter : _clients)
-			{
-				close(iter.second->getSockfd());
-				delete iter.second;
-			}
-			//关闭套节字closesocket
-			close(_sock);
+            for(auto iter : _clientsBuff)
+            {
+                closesocket(iter->getSockfd());
+                delete iter;
+            }
+            for (auto iter : _clients)
+            {
+                closesocket(iter.second->getSockfd());
+                delete iter.second;
+            }
+            //关闭套节字closesocket
+            closesocket(_sock);
             #endif
         }
         _sock = INVALID_SOCKET;
@@ -312,20 +296,21 @@ public:
         WSACleanup();
         #endif
         _clients.clear();
+        _clientsBuff.clear();
     }    
     
-    char _szRecv[RECV_BUFF_SIZE] = {};
     int recvData(ClientSocket* pClient)
     {
-        int nLen = recv(pClient->getSockfd(),_szRecv,RECV_BUFF_SIZE,0);
+        char* szRecv = pClient->getMsgBuf() + pClient->getLastPos();
+        int nLen = 0;
+        if(pClient != nullptr)
+            nLen = recv(pClient->getSockfd(),szRecv,RECV_BUFF_SIZE - pClient->getLastPos(),0);
         _pNetEvent->OnNetRecv(pClient);
         if(nLen <= 0)
         {
             //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
             return -1;
         }
-        //Move received data to msgBuf
-        memcpy(pClient->getMsgBuf() + pClient->getLastPos(),_szRecv,nLen);
         //Move msgBuf pointer to it's tail
         pClient->setLastPos(pClient->getLastPos() + nLen) ;
         //Received a integrated msgHeader
@@ -356,7 +341,7 @@ public:
     //response net msg
     virtual void onNetMsg(ClientSocket* pClient,DataHeader* header)
     {
-        _pNetEvent->OnNetMsg(pClient,header);
+        _pNetEvent->OnNetMsg(this,pClient,header);
     }
 };
 
@@ -469,7 +454,6 @@ public:
         #else
         cSock = accept(_sock,(sockaddr*)&clientAddr,(socklen_t*)&nAddrLen);
         #endif
-
         if(cSock == INVALID_SOCKET)
         {
             std::cout << "Received wrong client socket=" << cSock  << std::endl;
@@ -525,6 +509,11 @@ public:
         _recvCount = 0;
         _clientCount = 0;
         _msgCount = 0;
+        for(auto iter : _cellServers)
+        {
+            delete iter;
+        }
+        _cellServers.clear();
         #ifdef _WIN32
         WSACleanup();
         #endif
@@ -579,7 +568,7 @@ public:
         auto t1 = _tTime.getEpalsedSecond();
         if( t1 >= 1.0)
         {
-            std::cout << "time = " << t1 << " clients=" <<  _clientCount << " Received package recvCount = " << (int)_recvCount / t1 << " msgCount=" << (int)_msgCount / t1 << std::endl;
+            std::cout << "thread="<< _cellServers.size()<< " time = " << t1 << " clients=" <<  _clientCount << " Received package recvCount = " << (int)_recvCount / t1 << " msgCount=" << (int)_msgCount / t1 << std::endl;
             _recvCount = 0;
             _msgCount = 0;
             _tTime.update();
@@ -591,7 +580,7 @@ public:
         _clientCount--;
     }
 
-    virtual void OnNetMsg(ClientSocket* pClient,DataHeader* header)
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocket* pClient,DataHeader* header)
     {
         _msgCount++;
     }
@@ -599,6 +588,12 @@ public:
     virtual void OnNetJoin(ClientSocket* pClient)
     {
         _clientCount++;
+  
+    }
+
+    virtual void OnNetRecv(ClientSocket* pClient)
+    {
+        _recvCount++;
     }
 };
 

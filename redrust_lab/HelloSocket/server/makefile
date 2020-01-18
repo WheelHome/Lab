@@ -17,18 +17,18 @@ INCLUDE = -I../client/
 LINKPARAM = -pthread
 
 #编译选项
-CFALGS = -std=c++11 -Wall
+CFLAGS = -g -std=c++11 -Wall
 
 #定义目标文件生成规则
 all:$(TARGET)
 $(TARGET):$(OBJS)
-	$(CC) -o $(TARGET) $(LINKPARAM) $(OBJS)
+	$(CC) -o $(TARGET) $(CFLAGS) $(LINKPARAM) $(OBJS)
 
 #定义object文件生成规则
 .SUFFIXES:.cpp.o
 .cpp.o:
-	$(CC) $(LINKPARAM) $(INCLUDE) $(CFALGS) -c $<
+	$(CC) $(LINKPARAM) $(INCLUDE) -c $<
 
 #定义清理函数
 clean:
-	rm $(OBJS) $(TARGET)
+	rm $(OBJS) $(TARGET) core
