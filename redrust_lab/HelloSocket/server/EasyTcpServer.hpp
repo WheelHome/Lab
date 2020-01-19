@@ -140,7 +140,7 @@ public:
     //backup fdRead
     fd_set _fdRead_bak;
     //client list change
-    bool _clients_change = true;
+    bool _clients_change = false;
     SOCKET _maxSock; 
     //Handle net msg
 
@@ -149,17 +149,17 @@ public:
         while(isRun())
         {
             //From buffer to get cilent data
+            _mutex.lock();
             if(!_clientsBuff.empty())
             {
-                std::lock_guard<std::mutex> lock(_mutex);
                 for(auto pClient : _clientsBuff)
                 {
-                    if(pClient != nullptr)
-                        _clients[pClient->getSockfd()] = pClient;
+                    _clients[pClient->getSockfd()] = pClient;
                 }
                 _clientsBuff.clear();
                 _clients_change = true;
-            } 
+            }
+            _mutex.unlock();
             //if there not have client
             if(_clients.empty())
             {
@@ -179,28 +179,24 @@ public:
             if(_clients_change)
             {
                 _clients_change = false;
-                if(_clients.begin()->second != nullptr)
-                    _maxSock = _clients.begin()->second->getSockfd();
+                _maxSock = _clients.begin()->second->getSockfd();
                 for (auto iter : _clients)
                 {
-                    if(iter.second != nullptr)
+                    FD_SET(iter.second->getSockfd(), &fdRead);
+                    if (_maxSock < iter.second->getSockfd())
                     {
-                        FD_SET(iter.second->getSockfd(), &fdRead);
-                        if (_maxSock < iter.second->getSockfd())
-                        {
-                            _maxSock = iter.second->getSockfd();
-                        }
+                        _maxSock = iter.second->getSockfd();
                     }
                 }
-                memcpy(&_fdRead_bak,&fdRead,sizeof(fdRead));
+                memcpy(&_fdRead_bak,&fdRead,sizeof(fd_set));
             }
             else
             {
-                memcpy(&fdRead,&_fdRead_bak,sizeof(_fdRead_bak));
+                memcpy(&fdRead,&_fdRead_bak,sizeof(fd_set));
             }
             //nfds
             timeval t = {0,10};
-            int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,nullptr);
+            int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
             if(ret < 0)
             {
                 std::cout << "Select error!" << std::endl;
@@ -229,29 +225,32 @@ public:
                 }else {
                     printf("error. if (iter != _clients.end())\n");
                 }
-
             }
             #else
-            std::vector<ClientSocket*> temp(_clients.size());
-            for (auto iter : _clients)
+            
+			std::vector<ClientSocket*> temp;
+           for (auto& iter : _clients)
             {
-                if (iter.second != nullptr && FD_ISSET(iter.second->getSockfd(), &fdRead))
+                if (FD_ISSET(iter.first, &fdRead))
                 {
                     if (-1 == recvData(iter.second))
                     {
                         if (_pNetEvent)
                             _pNetEvent->OnNetLeave(iter.second);
                         _clients_change = true;
+                        _mutex.lock();
                         temp.push_back(iter.second);
+                        _mutex.unlock();
                     }
-                }
+                }  
             }
-            for (auto pClient : temp)
-            {
-                _clients.erase(pClient->getSockfd());
+			for (auto pClient : temp)
+			{
+				_clients.erase(pClient->getSockfd());
                 closesocket(pClient->getSockfd());
-                delete pClient;
-            }
+                if(pClient)
+				    delete pClient;
+			}
             #endif
         }
         return true;
@@ -302,9 +301,7 @@ public:
     int recvData(ClientSocket* pClient)
     {
         char* szRecv = pClient->getMsgBuf() + pClient->getLastPos();
-        int nLen = 0;
-        if(pClient != nullptr)
-            nLen = recv(pClient->getSockfd(),szRecv,RECV_BUFF_SIZE - pClient->getLastPos(),0);
+        int nLen = recv(pClient->getSockfd(),szRecv,RECV_BUFF_SIZE - pClient->getLastPos(),0);
         _pNetEvent->OnNetRecv(pClient);
         if(nLen <= 0)
         {

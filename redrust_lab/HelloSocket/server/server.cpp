@@ -18,7 +18,6 @@ public:
         {
         case CMD_LOGIN:
         {
-            LoginResult* ret = new LoginResult();
             pCellServer->addSendTask(pClient,header);
             break;
         }
@@ -75,7 +74,7 @@ int main()
     MyServer server;
     server.initSocket();
     server.Bind(nullptr,4567);
-    server.Listen(1000);
+    server.Listen(1023);
     server.Start(1);
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread

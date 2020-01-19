@@ -30,6 +30,7 @@ class CellSendMsgToClientTask:public CellTask
 private:
     ClientSocket* _pClient;
     DataHeader* _pHeader;
+    std::mutex _mutex;
 public:
     CellSendMsgToClientTask(ClientSocket* pClient,DataHeader* header)
     {
@@ -50,7 +51,9 @@ public:
 
     virtual void doTask()
     {
+        _mutex.lock();
         _pClient->sendData(_pHeader);
+        _mutex.unlock();
     }
 
 };
@@ -70,8 +73,11 @@ public:
 
     ~CellTaskServer()
     {
-        if(_thread)
+        if(_thread->joinable())
+        {
+            _thread->join();
             delete _thread;
+        }
     }
 
     void addTask(ClientSocket* pClient,DataHeader* header)
@@ -84,21 +90,23 @@ public:
     void Start()
     {
         _thread = new std::thread(std::mem_fun(&CellTaskServer::onRun),this);
+        _thread->detach();
     }
 
     void onRun()
     {
         while(true)
         {
+            _mutex.lock();
             if(!_tasksBuf.empty())
             {
-                std::lock_guard<std::mutex> lock(_mutex);
                 for(auto pTask : _tasksBuf)
                 {
                     _tasks.push_back(pTask);
                 }
                 _tasksBuf.clear();
             }
+            _mutex.unlock();
             if(_tasksBuf.empty())
             {
                 std::chrono::microseconds t(1);
@@ -113,6 +121,8 @@ public:
             _tasks.clear();
         }
     }
+
+
 };
 
 #endif
