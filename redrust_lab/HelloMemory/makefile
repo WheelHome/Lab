@@ -2,7 +2,8 @@
 TARGET = memory
 
 #源文件
-SRC = main.cpp
+SRC = main.cpp\
+	  Allocator.cpp
 #object文件
 OBJS = $(SRC:.cpp=.o)
 
@@ -16,7 +17,9 @@ INCLUDE =
 LINKPARAM = -pthread
 
 #编译选项
-CFALGS = -std=c++11
+CFALGS = -std=c++11 -g
+
+COMFLAGS = -D_DEBUG
 
 #定义目标文件生成规则
 all:$(TARGET)

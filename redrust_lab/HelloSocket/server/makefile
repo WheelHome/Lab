@@ -17,7 +17,7 @@ INCLUDE = -I../client/
 LINKPARAM = -pthread
 
 #编译选项
-CFLAGS = -g -std=c++11 -Wall
+CFLAGS = -g -std=c++11
 
 #定义目标文件生成规则
 all:$(TARGET)
