@@ -1,6 +1,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <string.h>
+#include <assert.h>
 
 #include <iostream>
 #include <queue>
@@ -19,6 +20,28 @@ public:
     TimerTaskMgr() = default;
 
     ~TimerTaskMgr() = default;
+
+    void AddTask(std::function<void()> func, int sec = 0, int min = 0, int hour = 0, int day = 0, int mon = 0, int year = 0)
+    {
+        Task task;
+        task.m_handler = func;
+        if (year)
+        {
+            assert(mon);
+            tm t;
+            t.tm_sec = sec;
+            t.tm_min = min;
+            t.tm_hour = hour;
+            t.tm_mday = day;
+            t.tm_mon = mon;
+            t.tm_yday = year;
+            task.m_time = mktime(&t);
+            return;
+        }
+        assert(!mon);
+        int interval = sec + min * 60 + hour * 3600 + day * 86400;
+        task.m_time = ::time(NULL) + interval;
+    }
 
     void AddTask(const time_t& time, std::function<void()> func)
     {
@@ -65,17 +88,18 @@ int main()
 
     for(int i = 2; i < 12; i++)
     {
-        mgr.AddTask(t + i, []{});
+        mgr.AddTask(t + i, [] {});
     }
     sleep(2);
 
     std::optional<timeval> ret;
-    do {
-         ret = mgr.GetTask();
-         if (ret)
-         {
-             std::cout << ret->tv_sec << std::endl;
-         }
+    do
+    {
+        ret = mgr.GetTask();
+        if (ret)
+        {
+            std::cout << ret->tv_sec << std::endl;
+        }
     } while(ret);
     return 0;
 }
