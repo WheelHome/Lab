@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <cassert>
 #include <ctype.h>
+#include "thread.hpp"
 
 template<typename T>
 struct Transform
@@ -70,12 +71,27 @@ private:
     std::unordered_map<std::string, std::vector<std::string>::iterator> m_params_iters;
 };
 
+template<typename T>
+void SetValue(T& res, const T& test, const T& default_value, std::function<bool(const T& x)> func)
+{
+    if (fun(test))
+    {
+        res = test;
+        return;
+    }
+    res = default_value;
+}
+
 /**
  * parse the argument
  * -n [num] : number of threads
  * -t [sec] : seconds
  * -c [number] : number of request
  */
+
+void Test(const int& sec, const int& count)
+{
+}
 
 int main(int argc, char** argv)
 {
@@ -97,9 +113,20 @@ int main(int argc, char** argv)
         }
     }
 
-    for(auto i : values)
+    int thread_count = values[0] > 0 ? values[0] : 1;
+    int second = values[1] > 0 ? values[1] : -1;
+    int request_count = values[2] > 0 ? values[2] : -1;
+
+    if (thread_count > 1)
     {
-        std::cout << i << std::endl;
+        std::vector<mthread::Thread> thread_pool;
+        for (int i = 0; i < thread_count; i++)
+        {
+            thread_pool.emplace_back(mthread::Thread());
+            thread_pool.back().Run(Test, second, request_count);
+        }
+        return 0;
     }
+
     return 0;
 }
