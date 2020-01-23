@@ -6,8 +6,32 @@
 #include <cassert>
 #include <ctype.h>
 
-struct Parser
+template<typename T>
+struct Transform
 {
+};
+
+template<>
+struct Transform<int>
+{
+    static int To(const std::string& s)
+    {
+        return atoi(s.c_str());
+    }
+};
+
+template<>
+struct Transform<std::string>
+{
+    static std::string To(const std::string& s)
+    {
+        return s;
+    }
+};
+
+class Parser
+{
+public:
     Parser() = default;
 
     ~Parser() = default;
@@ -23,45 +47,59 @@ struct Parser
         }
     }
 
-    std::vector<std::string> m_params; 
+    bool HasParam(const std::string& key)
+    {
+        auto iter = m_params_iters.find(key);
+        return iter != m_params_iters.end();
+    }
 
+    template<typename T>
+    std::optional<T> Param(const std::string& key)
+    {
+        auto iter = m_params_iters.find(key);
+        if (iter == m_params_iters.end() || iter->second == m_params.end() - 1)
+        {
+            return {};
+        }
+        auto next = iter->second;
+        next++;
+        return Transform<T>::To(*next);
+    }
+private:
+    std::vector<std::string> m_params;
     std::unordered_map<std::string, std::vector<std::string>::iterator> m_params_iters;
 };
 
 /**
-   -n [num] : number of threads
-   -t [sec] : seconds
-   -c [number] : number of request
+ * parse the argument
+ * -n [num] : number of threads
+ * -t [sec] : seconds
+ * -c [number] : number of request
  */
-
-void ParseClientArgv(int argc, char** argv)
-{
-    Parser p;
-    p.Parse(argc, argv);
-    auto& param_table = p.m_params_iters;
-    auto vect_end = p.m_params.end();
-    std::string get_param[] = {"-n", "-t", "-c"};
-    int get_value[3] = {0};
-
-    for (int i = 0; i < 3; i++)
-    {
-        auto iter = param_table.find(get_param[i]);
-        if(iter != param_table.end())
-        {
-            assert(iter->second!= vect_end - 1);
-            auto next = iter->second;
-            next++;
-            get_value[i] = atoi((*next).c_str());
-        }    
-    }
-    for (auto i : get_value)
-    {
-        std::cout << i << std::endl;
-    }
-}
 
 int main(int argc, char** argv)
 {
-    ParseClientArgv(argc, argv);
+    //ParseClientArgv(argc, argv);
+    Parser p;
+    p.Parse(argc, argv);
+    std::string params[] = {"-n", "-t", "-c"};
+    int values[3] = {0};
+
+    for (int i = 0; i < 3; i++)
+    {
+        if (p.HasParam(params[i]))
+        {
+            auto value = p.Param<int>(params[i]);
+            if (value)
+            {
+                values[i] = value.value();
+            }
+        }
+    }
+
+    for(auto i : values)
+    {
+        std::cout << i << std::endl;
+    }
     return 0;
 }
