@@ -98,4 +98,5 @@ public:
     }
 };
 
+typedef  std::shared_ptr<ClientSocket> ClientSocketPtr;
 #endif

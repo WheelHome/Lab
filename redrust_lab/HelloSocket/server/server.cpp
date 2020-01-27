@@ -1,3 +1,5 @@
+#include "Allocator.h"
+
 #include <thread>
 #include "messageHeader.hpp"
 #include "EasyTcpServer.hpp"
@@ -6,12 +8,12 @@ class MyServer : public EasyTcpServer
 {
 public:
 
-    virtual void OnNetLeave(ClientSocket* pClient)
+    virtual void OnNetLeave(ClientSocketPtr& pClient)
     {
         EasyTcpServer::OnNetLeave(pClient);
     }
 
-    virtual void OnNetMsg(CellServer* pCellServer,ClientSocket* pClient,DataHeader* header)
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocketPtr& pClient,DataHeader* header)
     {
         EasyTcpServer::OnNetMsg(pCellServer,pClient,header);
         switch (header->cmd)
@@ -35,13 +37,13 @@ public:
         }
     }
 
-    virtual void OnNetJoin(ClientSocket* pClient)
+    virtual void OnNetJoin(ClientSocketPtr& pClient)
     {
         EasyTcpServer::OnNetJoin(pClient);
     }
 
 
-    virtual void OnNetRecv(ClientSocket* pClient)
+    virtual void OnNetRecv(ClientSocketPtr& pClient)
     {
         EasyTcpServer::OnNetRecv(pClient);
     }
@@ -75,7 +77,7 @@ int main()
     server.initSocket();
     server.Bind(nullptr,4567);
     server.Listen(1023);
-    server.Start(1);
+    server.Start(4);
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
 

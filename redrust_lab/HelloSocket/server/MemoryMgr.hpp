@@ -18,8 +18,9 @@
 #define  MEMORY_SIZE_256 256
 #define  MEMORY_SIZE_512 512  
 #define  MEMORY_SIZE_1024 1024  
-#define  MEMORY_BLOCK_NUM 100  
-#define  MAX_MEMORY_SIZE MEMORY_SIZE_1024  
+#define  MEMORY_BLOCK_NUM 10000  
+
+#define  MAX_MEMORY_SIZE MEMORY_SIZE_128  
 
 class MemoryAlloc;
 //Memory minium block 
@@ -190,18 +191,18 @@ class MemoryMgr
 private:
     MemoryAllocator<MEMORY_SIZE_64,MEMORY_BLOCK_NUM> _mem64;
     MemoryAllocator<MEMORY_SIZE_128,MEMORY_BLOCK_NUM> _mem128;
-    MemoryAllocator<MEMORY_SIZE_256,MEMORY_BLOCK_NUM> _mem256;
-    MemoryAllocator<MEMORY_SIZE_512,MEMORY_BLOCK_NUM> _mem512;
-    MemoryAllocator<MEMORY_SIZE_1024,MEMORY_BLOCK_NUM> _mem1024;
+    //MemoryAllocator<MEMORY_SIZE_256,MEMORY_BLOCK_NUM> _mem256;
+    //MemoryAllocator<MEMORY_SIZE_512,MEMORY_BLOCK_NUM> _mem512;
+    //MemoryAllocator<MEMORY_SIZE_1024,MEMORY_BLOCK_NUM> _mem1024;
     MemoryAlloc* _szAlloc[MAX_MEMORY_SIZE + 1] ;
 
     MemoryMgr(/* args */)
     {
         init_szAlloc(0,64,&_mem64);
         init_szAlloc(65,128,&_mem128);
-        init_szAlloc(129,256,&_mem256);
-        init_szAlloc(257,512,&_mem512);
-        init_szAlloc(513,1024,&_mem1024);
+        //init_szAlloc(129,256,&_mem256);
+        //init_szAlloc(257,512,&_mem512);
+        //init_szAlloc(513,1024,&_mem1024);
         std::cout << "MemoryMgr" << std::endl;
     }
 

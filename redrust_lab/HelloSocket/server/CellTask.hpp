@@ -3,6 +3,7 @@
 
 #include <list>
 
+
 class CellTask
 {
 private:
@@ -25,14 +26,16 @@ public:
 
 };
 
+typedef std::shared_ptr<CellTask> CellTaskPtr;
+
 class CellSendMsgToClientTask:public CellTask
 {
 private:
-    ClientSocket* _pClient;
+    ClientSocketPtr _pClient;
     DataHeader* _pHeader;
     std::mutex _mutex;
 public:
-    CellSendMsgToClientTask(ClientSocket* pClient,DataHeader* header)
+    CellSendMsgToClientTask(ClientSocketPtr pClient,DataHeader* header)
     {
         _pClient = pClient;
         _pHeader = header;
@@ -45,7 +48,6 @@ public:
 
     ~CellSendMsgToClientTask()
     {
-        _pClient = nullptr;
         _pHeader = nullptr;
     }
 
@@ -61,8 +63,8 @@ public:
 class CellTaskServer
 {
 private:
-    std::list<CellTask*> _tasks;
-    std::list<CellTask*> _tasksBuf;
+    std::list<CellTaskPtr> _tasks;
+    std::list<CellTaskPtr> _tasksBuf;
     std::mutex _mutex;
     std::thread* _thread;
 public:
@@ -80,10 +82,9 @@ public:
         }
     }
 
-    void addTask(ClientSocket* pClient,DataHeader* header)
+    void addTask(CellTaskPtr task)
     {
         std::lock_guard<std::mutex> lock(_mutex);
-        CellSendMsgToClientTask* task = new CellSendMsgToClientTask(pClient,header);
         _tasksBuf.push_back(task);
     }
 
@@ -116,7 +117,6 @@ public:
             for(auto pTask : _tasks)
             {
                 pTask->doTask();
-                delete pTask;
             }
             _tasks.clear();
         }

@@ -6,7 +6,7 @@
 #include <atomic>
 
 #define cCount 1000
-#define tCount 8
+#define tCount 4
 bool g_bExit = true;
 std::atomic_int sendCount(0);
 std::atomic_int readyCount(0);
@@ -59,19 +59,24 @@ void sendThread(int id)//four thread 1~4
 
     Login login = {"jack","pass"};
     const int nLen = sizeof(login);
+    CELLTimestamp Time;
     while(g_bExit)
     {
         for(int i = begin; i < end; i++)
         {
-            if(client[i]->sendData(&login) == -1)
+            if(Time.getEpalsedSecond() >= 1.0)
             {
-                std::cout << "Send error" << std::endl;
-                std::cout << errno << std::endl;
-            }
-            else
-            {
-                sendCount++;
-            }
+                if(client[i]->sendData(&login) == -1)
+                {
+                    std::cout << "Send error" << std::endl;
+                    std::cout << errno << std::endl;
+                }
+                else
+                {
+                    sendCount++;
+                } 
+                Time.update();
+           }
             client[i]->onRun();
         }
     }
