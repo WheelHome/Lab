@@ -5,11 +5,23 @@
 
 #include <atomic>
 
-#define cCount 1000
+#define cCount 200
 #define tCount 4
 bool g_bExit = true;
 std::atomic_int sendCount(0);
 std::atomic_int readyCount(0);
+
+void recvThread(EasyTcpClient* client[],int begin,int end)
+{
+    while(g_bExit)
+    {
+        for(int i = begin; i < end; i++)
+        {
+            client[i]->onRun();
+        }
+    }
+}
+
 void cmdThread()
 {
     while(g_bExit)
@@ -57,8 +69,11 @@ void sendThread(int id)//four thread 1~4
         std::this_thread::sleep_for(t);
     }
 
-    Login login = {"jack","pass"};
-    const int nLen = sizeof(login);
+    std::thread t1(recvThread,client,begin,end);
+    t1.detach();
+
+    netmsg_Login netmsg_Login = {"jack","pass"};
+    const int nLen = sizeof(netmsg_Login);
     CELLTimestamp Time;
     while(g_bExit)
     {
@@ -66,7 +81,7 @@ void sendThread(int id)//four thread 1~4
         {
             if(Time.getEpalsedSecond() >= 1.0)
             {
-                if(client[i]->sendData(&login) == -1)
+                if(client[i]->sendData(&netmsg_Login) == -1)
                 {
                     std::cout << "Send error" << std::endl;
                     std::cout << errno << std::endl;
@@ -74,10 +89,11 @@ void sendThread(int id)//four thread 1~4
                 else
                 {
                     sendCount++;
-                } 
+                }
                 Time.update();
-           }
-            client[i]->onRun();
+            }
+            std::chrono::microseconds t(10);
+            std::this_thread::sleep_for(t);
         }
     }
     for(int i = begin; i < end; i++)

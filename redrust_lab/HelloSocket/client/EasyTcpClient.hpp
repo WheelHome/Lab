@@ -39,7 +39,7 @@ public:
     {
         this->CLose();
     }
-    //Init clientSocket
+    //Init CellClient
     int initSocket()
     {
         #ifdef _WIN32
@@ -89,7 +89,7 @@ public:
         return ret;
     }
 
-    //close clientSocket
+    //close CellClient
     void CLose()
     {
         if(_sock != INVALID_SOCKET)

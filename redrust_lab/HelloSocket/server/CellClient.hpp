@@ -2,14 +2,11 @@
 #define _CLIENT_SOCKET_H_
 
 
-//Buf minimum size 
-#ifndef RECV_BUFF_SIZE
-#define RECV_BUFF_SIZE 10240*5
-#define SEND_BUFF_SIZE RECV_BUFF_SIZE
-#endif
+#include "Cell.hpp"
+#include "CELLObjPoll.hpp"
 
 //Client data type
-class ClientSocket
+class CellClient : public ObjectPollBase<CellClient,1000>
 {
 private:
     SOCKET _sockfd;//socket fd_set desc set
@@ -23,7 +20,7 @@ private:
     //The msgBuf end
     long unsigned int _lastSendPos = 0;
 public:
-    ClientSocket(SOCKET _sockfd = INVALID_SOCKET)
+    CellClient(SOCKET _sockfd = INVALID_SOCKET)
     {
         this->_sockfd = _sockfd;
         bzero(_szMsgBuf,sizeof(_szMsgBuf));
@@ -98,5 +95,6 @@ public:
     }
 };
 
-typedef  std::shared_ptr<ClientSocket> ClientSocketPtr;
+typedef  std::shared_ptr<CellClient> ClientSocketPtr;
+
 #endif

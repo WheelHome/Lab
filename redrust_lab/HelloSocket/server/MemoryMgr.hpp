@@ -102,9 +102,6 @@ public:
     {
         MemoryBlock* pBlock = (MemoryBlock*)((char*)pMem - sizeof(MemoryBlock));
         xPrintf("freeMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
-        assert(1 == pBlock->nRef);
-
-     
         if(pBlock->bPool)
         {
             std::lock_guard<std::mutex> lg(_mutex);

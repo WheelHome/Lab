@@ -1,5 +1,6 @@
 #include "Allocator.h"
 #include "CELLTimestamp.hpp"
+#include "CELLObjPoll.hpp"
 #include <thread>
 #include <memory>
 
@@ -19,7 +20,13 @@ void workFun(int index)
     }
 }
 
-class ClassA
+
+/*
+* object pool:
+* 1.overload new&delete operator
+* 2.declare a createObj&deleteObj method
+*/
+class ClassA : public ObjectPollBase<ClassA,1>
 {
 public:
     int num;
@@ -28,11 +35,12 @@ public:
     {
         std::cout << "ClassA" << std::endl;
     }
-    
+
     ~ClassA()
     {
         std::cout << "~ClassA" << std::endl;
     }
+
 };
 
 void fun(std::shared_ptr<ClassA> pA)
@@ -57,28 +65,28 @@ int main()
     delete[] data3;*/
 
     //4}
-     /*std::thread* t[tCount];
+    /*std::thread* t[tCount];
     for(int n = 0 ; n < tCount ; n++)
     {
-        t[n] = new std::thread(workFun,n);
+       t[n] = new std::thread(workFun,n);
     }
     CELLTimestamp tTime;
     for(int n = 0 ; n < tCount ; n++)
     {
-        t[n]->join();
-        // t[n]->detach();
+       t[n]->join();
+       // t[n]->detach();
     }
     std::cout << tTime.getElapsedTimeInMilliSec() << std::endl;
     std::cout << "Hello,Main thread." << std::endl;
     for(int n = 0 ; n < tCount ; n++)
     {
-        delete t[n];
-    }*/
+       delete t[n];
+    }
     int* a = new int;
     *a = 100;
     std::cout << "a=" << *a << std::endl;
     delete a;
-    
+
     std::shared_ptr<int> b = std::make_shared<int>();
     *b = 100;
     std::cout << "b=" << *b << std::endl;
@@ -96,5 +104,22 @@ int main()
     std::cout << "fun(a2)=" << a2->num << std::endl;
     std::cout << "use_count=" << a2.use_count() << std::endl;
 
+    ClassA* a1 = new ClassA();
+
+    //object pool
+    ClassA* a2 = ClassA::createObj();
+    delete a1;
+    ClassA::destoryObject(a2);*/
+
+    std::cout << "shared_ptr test" << std::endl;
+    {
+        //Not use ObjectPool
+        std::shared_ptr<ClassA> s1 = std::make_shared<ClassA>();
+    }
+    {
+        //Use ObjectPool
+        std::shared_ptr<ClassA> s2(new ClassA());
+    }
+    
     return 0;
 }

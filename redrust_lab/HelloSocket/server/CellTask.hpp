@@ -3,7 +3,6 @@
 
 #include <list>
 
-
 class CellTask
 {
 private:
@@ -60,13 +59,15 @@ public:
 
 };
 
+typedef  std::shared_ptr<CellSendMsgToClientTask> CellSendMsgToClientTaskPtr;
+
 class CellTaskServer
 {
 private:
     std::list<CellTaskPtr> _tasks;
     std::list<CellTaskPtr> _tasksBuf;
     std::mutex _mutex;
-    std::thread* _thread;
+    std::thread  _thread;
 public:
     CellTaskServer()
     {
@@ -75,14 +76,9 @@ public:
 
     ~CellTaskServer()
     {
-        if(_thread->joinable())
-        {
-            _thread->join();
-            delete _thread;
-        }
     }
 
-    void addTask(CellTaskPtr task)
+    void addTask(CellTaskPtr &task)
     {
         std::lock_guard<std::mutex> lock(_mutex);
         _tasksBuf.push_back(task);
@@ -90,8 +86,8 @@ public:
 
     void Start()
     {
-        _thread = new std::thread(std::mem_fun(&CellTaskServer::onRun),this);
-        _thread->detach();
+        _thread = std::thread(std::mem_fun(&CellTaskServer::onRun),this);
+        _thread.detach();
     }
 
     void onRun()
