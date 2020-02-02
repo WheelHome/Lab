@@ -3,11 +3,11 @@
 
 #include "Cell.hpp"
 #include "messageHeader.hpp"
+#include "CELLTimestamp.hpp"
 #include "CellClient.hpp"
 #include "CellTask.hpp"
 #include "INetEvent.hpp"
 #include "CellServer.hpp"
-#include "CELLTimestamp.hpp"
 
 typedef std::shared_ptr<CellServer> CellServerPtr;
 

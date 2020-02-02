@@ -75,7 +75,7 @@ public:
             assert(0 == pReturn->nRef);
             pReturn->nRef = 1;
         }
-        printf("allocObjMemory: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)size);
+        //printf("allocObjMemory: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)size);
         return ((char*)pReturn + sizeof(NodeHeader));
     }
 
@@ -83,7 +83,7 @@ public:
     void freeObjMemory(void* pMem)
     {
         NodeHeader* pBlock = (NodeHeader*)((char*)pMem - sizeof(NodeHeader));
-        printf("freeObjMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
+        //printf("freeObjMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
         if(pBlock->bPool)
         {
             std::lock_guard<std::mutex> lg(_mutex); 

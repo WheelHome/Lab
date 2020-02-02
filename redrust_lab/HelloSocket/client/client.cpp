@@ -4,20 +4,22 @@
 #include "CELLTimestamp.hpp"
 
 #include <atomic>
+#include <mutex>
 
 #define cCount 200
 #define tCount 4
 bool g_bExit = true;
 std::atomic_int sendCount(0);
 std::atomic_int readyCount(0);
+std::mutex m;
 
-void recvThread(EasyTcpClient* client[],int begin,int end)
+void recvThread(std::shared_ptr<EasyTcpClient[]> client,int begin,int end)
 {
     while(g_bExit)
     {
         for(int i = begin; i < end; i++)
         {
-            client[i]->onRun();
+            client[i].onRun();
         }
     }
 }
@@ -45,15 +47,11 @@ void sendThread(int id)//four thread 1~4
     int c = (cCount) / tCount;
     int begin = (id-1)*c;
     int end  = id*c;
-    EasyTcpClient* client[cCount];
+    std::shared_ptr<EasyTcpClient[]> clients(new EasyTcpClient[cCount]);
     char ip[] = "127.0.0.1";
     for(int i = begin; i < end; i++)
     {
-        client[i] = new EasyTcpClient();
-    }
-    for(int i = begin; i < end; i++)
-    {
-        if(client[i]->Connect(ip,4567) < 0)
+        if(clients[i].Connect(ip,4567) < 0)
         {
             std::cout <<"Client="<< i << "Connect error" << std::endl;
         }
@@ -61,15 +59,16 @@ void sendThread(int id)//four thread 1~4
 
     std::cout << "thread=" << id << " Connect<begin=" << begin << ",end=" << end << std::endl;
 
-    readyCount++;
+    //heart beat detect
     while(readyCount < tCount)
     {
+        readyCount++;
         //wait for other thread to ready for sending data
         std::chrono::microseconds t(10);
         std::this_thread::sleep_for(t);
     }
 
-    std::thread t1(recvThread,client,begin,end);
+    std::thread t1(recvThread,clients,begin,end);
     t1.detach();
 
     netmsg_Login netmsg_Login = {"jack","pass"};
@@ -79,9 +78,9 @@ void sendThread(int id)//four thread 1~4
     {
         for(int i = begin; i < end; i++)
         {
-            if(Time.getEpalsedSecond() >= 1.0)
+            if(Time.getEpalsedSecond() >= 0.1)
             {
-                if(client[i]->sendData(&netmsg_Login) == -1)
+                if(clients[i].sendData(&netmsg_Login) == -1)
                 {
                     std::cout << "Send error" << std::endl;
                     std::cout << errno << std::endl;
@@ -92,15 +91,14 @@ void sendThread(int id)//four thread 1~4
                 }
                 Time.update();
             }
-            std::chrono::microseconds t(10);
-            std::this_thread::sleep_for(t);
         }
     }
+    m.lock();
     for(int i = begin; i < end; i++)
     {
-        client[i]->CLose();
-        delete client[i];
+        clients[i].CLose();
     }
+    m.unlock();
 }
 
 int main()

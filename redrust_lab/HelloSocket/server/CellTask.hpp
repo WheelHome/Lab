@@ -2,8 +2,9 @@
 #define _CELL_TASK_H_
 
 #include <list>
+#include <functional>
 
-class CellTask
+/*class CellTask
 {
 private:
 
@@ -24,9 +25,6 @@ public:
     }
 
 };
-
-typedef std::shared_ptr<CellTask> CellTaskPtr;
-
 class CellSendMsgToClientTask:public CellTask
 {
 private:
@@ -59,13 +57,17 @@ public:
 
 };
 
+typedef std::shared_ptr<CellTask> CellTaskPtr;
+
 typedef  std::shared_ptr<CellSendMsgToClientTask> CellSendMsgToClientTaskPtr;
+*/
 
 class CellTaskServer
 {
+    typedef std::function<void()> CellTask;
 private:
-    std::list<CellTaskPtr> _tasks;
-    std::list<CellTaskPtr> _tasksBuf;
+    std::list<CellTask> _tasks;
+    std::list<CellTask> _tasksBuf;
     std::mutex _mutex;
     std::thread  _thread;
 public:
@@ -78,7 +80,7 @@ public:
     {
     }
 
-    void addTask(CellTaskPtr &task)
+    void addTask(CellTask task)
     {
         std::lock_guard<std::mutex> lock(_mutex);
         _tasksBuf.push_back(task);
@@ -112,7 +114,7 @@ public:
             }
             for(auto pTask : _tasks)
             {
-                pTask->doTask();
+                pTask();
             }
             _tasks.clear();
         }

@@ -22,9 +22,15 @@ public:
 
     void addSendTask(ClientSocketPtr pClient,DataHeader* header)
     {
+        /*
         auto  task = std::make_shared<CellSendMsgToClientTask>(pClient,header);
         auto temp = std::dynamic_pointer_cast<CellTask>(task);
         _taskServer.addTask(temp);
+        */
+
+       _taskServer.addTask([pClient,header](){
+           pClient->sendData(header);
+       });
     }
 
     void setEventObj(INetEvent* event)
@@ -107,6 +113,7 @@ public:
             {
                 std::chrono::milliseconds t(1);
                 std::this_thread::sleep_for(t);
+                _old_time = CELLTime::getNowInMilliSec();
                 continue;
             }
             // socket
@@ -146,54 +153,87 @@ public:
                 CLose();
                 return false;
             }
+            /*
             else if (ret == 0)
             {
                 continue;
-            }
+            }*/
             
-            #ifdef _WIN32
-            for (int n = 0; n < fdRead.fd_count; n++)
-            {
-                auto iter  = _clients.find(fdRead.fd_array[n]);
-                if (iter != _clients.end())
-                {
-                    if (-1 == RecvData(iter->second))
-                    {
-                        if (_pNetEvent)
-                            _pNetEvent->OnNetLeave(iter->second);
-                        _clients_change = true;
-                        _clients.erase(iter->first);
-                    }
-                }else {
-                    printf("error. if (iter != _clients.end())\n");
-                }
-            }
-            #else
-            
-            std::vector<ClientSocketPtr> temp;
-           for (auto& iter : _clients)
-            {
-                if (FD_ISSET(iter.first, &fdRead))
-                {
-                    if (-1 == recvData(iter.second))
-                    {
-                        if (_pNetEvent)
-                            _pNetEvent->OnNetLeave(iter.second);
-                        _clients_change = true;
-                        _mutex.lock();
-                        temp.push_back(iter.second);
-                        _mutex.unlock();
-                    }
-                }  
-            }
-            for (auto pClient : temp)
-            {
-                _clients.erase(pClient->getSockfd());
-                closesocket(pClient->getSockfd());
-            }
-            #endif
+            ReadData(fdRead);
+            CheckTime();
         }
         return true;
+    }
+
+    time_t _old_time = CELLTime::getNowInMilliSec();
+    void CheckTime()
+    {
+        auto tNow = CELLTime::getNowInMilliSec();
+        auto dt = tNow - _old_time;
+        _old_time = tNow;
+        for(auto iter = _clients.begin(); iter != _clients.end();)
+        {
+            if(iter->second->checkHeart(dt))
+            {
+                if (_pNetEvent)
+                    _pNetEvent->OnNetLeave(iter->second);
+                _clients_change = true;
+                _mutex.lock();
+                auto iterOld = iter++;
+                _clients.erase(iterOld);
+                _mutex.unlock();
+            }else
+            {
+                iter++;
+            }
+        }
+    }
+
+    void ReadData(fd_set& fdRead)
+    {
+        #ifdef _WIN32
+        for (int n = 0; n < fdRead.fd_count; n++)
+        {
+            auto iter  = _clients.find(fdRead.fd_array[n]);
+            if (iter != _clients.end())
+            {
+                if (-1 == RecvData(iter->second))
+                {
+                    if (_pNetEvent)
+                        _pNetEvent->OnNetLeave(iter->second);
+                    _clients_change = true;
+                    closesocket(iter->first);
+                    delete iter->second;
+                    _clients.erase(iter->first);
+                }
+            }else {
+                printf("error. if (iter != _clients.end())\n");
+            }
+        }
+        #else
+        
+        std::vector<ClientSocketPtr> temp;
+        for (auto& iter : _clients)
+        {
+            if (FD_ISSET(iter.first, &fdRead))
+            {
+                if (-1 == recvData(iter.second))
+                {
+                    if (_pNetEvent)
+                        _pNetEvent->OnNetLeave(iter.second);
+                    _clients_change = true;
+                    _mutex.lock();
+                    temp.push_back(iter.second);
+                    _mutex.unlock();
+                }
+            }  
+        }
+        for (auto pClient : temp)
+        {
+            _clients.erase(pClient->getSockfd());
+            closesocket(pClient->getSockfd());
+        }
+        #endif
     }
 
     //isRun
@@ -246,6 +286,8 @@ public:
             //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
             return -1;
         }
+
+        pClient->resetDTHeart();
         //Move msgBuf pointer to it's tail
         pClient->setLastPos(pClient->getLastPos() + nLen) ;
         //Received a integrated msgHeader

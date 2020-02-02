@@ -117,7 +117,6 @@ public:
             if(ret < 0)
             {
                 std::cout << "Socket="<< _sock <<" select completed!" << std::endl;
-                CLose();
                 return false;
             }
             if(FD_ISSET(_sock,&fdReads))
@@ -126,7 +125,6 @@ public:
                 if(recvData(_sock) == -1)
                 {
                     std::cout << "Socket="<< _sock << " Select finished" << std::endl;
-                    CLose();
                     return false;
                 }
             }

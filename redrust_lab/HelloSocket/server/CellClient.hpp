@@ -5,6 +5,7 @@
 #include "Cell.hpp"
 #include "CELLObjPoll.hpp"
 
+#define CLIENT_HEART_DEAD_TIME 5000
 //Client data type
 class CellClient : public ObjectPollBase<CellClient,1000>
 {
@@ -19,7 +20,27 @@ private:
     char _szSendBuf[SEND_BUFF_SIZE] = {};
     //The msgBuf end
     long unsigned int _lastSendPos = 0;
+
+    //Heart beat death time
+    time_t _dtHeart;
+
 public:
+    bool checkHeart(time_t dt)
+    {
+        _dtHeart += dt;
+        if(_dtHeart >= CLIENT_HEART_DEAD_TIME)
+        {
+            std::cout << "CheckHeart dead:" << _sockfd << " time:" << _dtHeart << std::endl;
+            return true;
+        }
+        return false;
+    }
+
+    void resetDTHeart()
+    {
+        _dtHeart = 0;
+    }
+
     CellClient(SOCKET _sockfd = INVALID_SOCKET)
     {
         this->_sockfd = _sockfd;
@@ -28,6 +49,8 @@ public:
 
         bzero(_szSendBuf,sizeof(_szSendBuf));
         this->_lastSendPos = 0;
+
+        resetDTHeart();
     }
 
     SOCKET getSockfd()

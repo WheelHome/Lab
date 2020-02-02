@@ -16,7 +16,10 @@ public:
         {
         case CMD_LOGIN:
         {
-            pCellServer->addSendTask(pClient,header);
+            pClient->resetDTHeart();
+            netmsg_LoginR ret;
+            pClient->sendData(&ret);
+            //pCellServer->addSendTask(pClient,header);
             break;
         }
         case CMD_LOGOUT:
@@ -26,6 +29,12 @@ public:
         case CMD_ERROR:
         {
             break;
+        }
+        case CMD_C2S_HEART:
+        {
+            pClient->resetDTHeart();
+            netmsg_S2C_Heart ret;
+            pClient->sendData(&ret);
         }
         default:
         {

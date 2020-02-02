@@ -10,7 +10,7 @@ OBJS = $(SRC:.cpp=.o)
 CC = g++
 
 #头文件路径
-INCLUDE = -I../server/
+INCLUDE = 
 
 #链接库
 LINKPARAM = -pthread

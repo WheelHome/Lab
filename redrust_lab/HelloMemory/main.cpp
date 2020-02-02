@@ -120,6 +120,6 @@ int main()
         //Use ObjectPool
         std::shared_ptr<ClassA> s2(new ClassA());
     }
-    
+
     return 0;
 }

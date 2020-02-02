@@ -93,7 +93,7 @@ public:
             assert(0 == pReturn->nRef);
             pReturn->nRef = 1;
         }
-        xPrintf("allocMemory: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)nSize);
+     //   xPrintf("allocMemory: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)nSize);
         return ((char*)pReturn + sizeof(MemoryBlock));
     }
 
@@ -101,7 +101,7 @@ public:
     void freeMemory(void* pMem)
     {
         MemoryBlock* pBlock = (MemoryBlock*)((char*)pMem - sizeof(MemoryBlock));
-        xPrintf("freeMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
+     //   xPrintf("freeMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
         if(pBlock->bPool)
         {
             std::lock_guard<std::mutex> lg(_mutex);
@@ -239,7 +239,7 @@ public:
             pReturn->nRef = 1;
             pReturn->pAlloc = nullptr;
             pReturn->pNext = nullptr;
-            xPrintf("allocMem: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)nSize);
+         //   xPrintf("allocMem: %llx,id=%d,size=%d\n",(long long unsigned int)pReturn,pReturn->nID,(int)nSize);
             return ((char*)pReturn + sizeof(MemoryBlock));
         }
     }
@@ -248,7 +248,7 @@ public:
     void freeMem(void* pMem)
     {
         MemoryBlock* pBlock = (MemoryBlock*)((char*)pMem - sizeof(MemoryBlock));
-        xPrintf("freeMem: %llx,id=%d,bPool=%d\n",(long long unsigned int)pBlock,pBlock->nID,pBlock->bPool);
+        //xPrintf("freeMem: %llx,id=%d,bPool=%d\n",(long long unsigned int)pBlock,pBlock->nID,pBlock->bPool);
         if(pBlock->bPool)
         {
             pBlock->pAlloc->freeMemory(pMem);
