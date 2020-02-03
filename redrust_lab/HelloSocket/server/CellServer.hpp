@@ -6,28 +6,43 @@ class INetEvent;
 class CellServer
 {
 private:
-    SOCKET _sock;
     //formal client queue
 	std::map<SOCKET,ClientSocketPtr> _clients;
     //clients buffer queue
     std::vector<ClientSocketPtr> _clientsBuff;
     //buffer queue lock
     std::mutex _mutex;
-    std::thread _pThread;
     //net event object
     INetEvent* _pNetEvent;
 
     CellTaskServer  _taskServer;
+    CellSemaphore _sem;
+
+    //backup fdRead
+    fd_set _fdRead_bak;
+
+    time_t _old_time = CELLTime::getNowInMilliSec();
+    int _id = -1;
+    //client list change
+    bool _clients_change = true;
+    bool _isRun;
+    SOCKET _maxSock; 
+
+private:
+    void ClearClients()
+    {
+        _clients.clear();
+        _clientsBuff.clear();
+    }
+
 public:
 
-    void addSendTask(ClientSocketPtr pClient,DataHeader* header)
+    void addSendTask(ClientSocketPtr pClient,netmsg_DataHeader* header)
     {
-        /*
-        auto  task = std::make_shared<CellSendMsgToClientTask>(pClient,header);
+        /*auto  task = std::make_shared<CellSendMsgToClientTask>(pClient,header);
         auto temp = std::dynamic_pointer_cast<CellTask>(task);
-        _taskServer.addTask(temp);
-        */
-
+        _taskServer.addTask(temp);*/
+        
        _taskServer.addTask([pClient,header](){
            pClient->sendData(header);
        });
@@ -45,14 +60,19 @@ public:
 
     void Start()
     {
-        _pThread = std::thread(std::mem_fun(&CellServer::onRun),this);
-        _taskServer.Start();
+        if(!_isRun)
+        {
+            _isRun = true;
+            std::thread pThread = std::thread(std::mem_fun(&CellServer::onRun),this);
+            pThread.detach();
+            _taskServer.Start();
+        }
     }
 
     //send data to single socket
-    int sendData(SOCKET cSock,DataHeader* header)
+    int sendData(SOCKET cSock,netmsg_DataHeader* header)
     {
-        if(isRun() && header)
+        if(_isRun && header)
         {
             sigset_t set;
             sigemptyset(&set);
@@ -69,32 +89,23 @@ public:
         _clientsBuff.push_back(pClient);
     }
 
-    CellServer(SOCKET sock = INVALID_SOCKET)
+    CellServer(int id)
     {
-        _sock = sock;
+        _id = id;
         _pNetEvent = nullptr;
+        _taskServer._serverId = id;
     }
 
     ~CellServer()
     {
         CLose();
-        _sock = INVALID_SOCKET;
-        if(_pThread.joinable())
-        {
-            _pThread.join();
-        }
     }
 
-    //backup fdRead
-    fd_set _fdRead_bak;
-    //client list change
-    bool _clients_change = false;
-    SOCKET _maxSock; 
+ 
     //Handle net msg
-
     bool onRun()
     {
-        while(isRun())
+        while(_isRun)
         {
             //From buffer to get cilent data
             _mutex.lock();
@@ -103,6 +114,11 @@ public:
                 for(auto pClient : _clientsBuff)
                 {
                     _clients[pClient->getSockfd()] = pClient;
+                    pClient->_serverId = _id;
+                    if(_pNetEvent)
+                    {
+                        _pNetEvent->OnNetJoin(pClient);
+                    }
                 }
                 _clientsBuff.clear();
                 _clients_change = true;
@@ -160,12 +176,13 @@ public:
             }*/
             
             ReadData(fdRead);
-            CheckTime();
+         //   CheckTime();
         }
+        this->ClearClients();
+        _sem.wakeup();
         return true;
     }
 
-    time_t _old_time = CELLTime::getNowInMilliSec();
     void CheckTime()
     {
         auto tNow = CELLTime::getNowInMilliSec();
@@ -173,6 +190,7 @@ public:
         _old_time = tNow;
         for(auto iter = _clients.begin(); iter != _clients.end();)
         {
+            //Heart beat check
             if(iter->second->checkHeart(dt))
             {
                 if (_pNetEvent)
@@ -182,8 +200,10 @@ public:
                 auto iterOld = iter++;
                 _clients.erase(iterOld);
                 _mutex.unlock();
+                //closesocket(iterOld->second->getSockfd());
             }else
             {
+                iter->second->checkSend(dt);
                 iter++;
             }
         }
@@ -202,7 +222,7 @@ public:
                     if (_pNetEvent)
                         _pNetEvent->OnNetLeave(iter->second);
                     _clients_change = true;
-                    closesocket(iter->first);
+                    //closesocket(iter->first);
                     delete iter->second;
                     _clients.erase(iter->first);
                 }
@@ -222,58 +242,29 @@ public:
                     if (_pNetEvent)
                         _pNetEvent->OnNetLeave(iter.second);
                     _clients_change = true;
-                    _mutex.lock();
                     temp.push_back(iter.second);
-                    _mutex.unlock();
                 }
             }  
         }
         for (auto pClient : temp)
         {
             _clients.erase(pClient->getSockfd());
-            closesocket(pClient->getSockfd());
+         //   closesocket(pClient->getSockfd());
         }
         #endif
-    }
-
-    //isRun
-    bool isRun()
-    {
-        return _sock != INVALID_SOCKET;
     }
 
     //Close socket
     void CLose()
     {
-        if(_sock != INVALID_SOCKET)
+        if(_isRun)
         {
-            #ifdef _WIN32
-            for (auto iter : _clients)
-            {
-                closesocket(iter.second->sockfd());
-                delete iter.second;
-            }
-            //关闭套节字closesocket
-            closesocket(_sock);
-            #else
-            for(auto iter : _clientsBuff)
-            {
-                closesocket(iter->getSockfd());
-            }
-            for (auto iter : _clients)
-            {
-                closesocket(iter.second->getSockfd());
-            }
-            //关闭套节字closesocket
-            closesocket(_sock);
-            #endif
+            std::cout << "CellServer:" << _id << ".Close() 1" << std::endl;
+            _taskServer.Close();
+            _isRun = false;
+            _sem.wait();
+            std::cout << "CellServer:" << _id << ".Close() 2" << std::endl;
         }
-        _sock = INVALID_SOCKET;
-        #ifdef _WIN32
-        WSACleanup();
-        #endif
-        _clients.clear();
-        _clientsBuff.clear();
     }    
     
     int recvData(ClientSocketPtr pClient)
@@ -291,10 +282,10 @@ public:
         //Move msgBuf pointer to it's tail
         pClient->setLastPos(pClient->getLastPos() + nLen) ;
         //Received a integrated msgHeader
-        while(pClient->getLastPos()  >= sizeof(DataHeader))
+        while(pClient->getLastPos()  >= sizeof(netmsg_DataHeader))
         {
             //There can be know the all msgData
-            DataHeader* header = (DataHeader*)pClient->getMsgBuf();
+            netmsg_DataHeader* header = (netmsg_DataHeader*)pClient->getMsgBuf();
             //Received a integrated msgData
             if((int)pClient->getLastPos() > header->dataLength)
             {
@@ -315,8 +306,9 @@ public:
         }
         return 1;
     }
+
     //response net msg
-    virtual void onNetMsg(ClientSocketPtr pClient,DataHeader* header)
+    virtual void onNetMsg(ClientSocketPtr pClient,netmsg_DataHeader* header)
     {
         _pNetEvent->OnNetMsg(this,pClient,header);
     }

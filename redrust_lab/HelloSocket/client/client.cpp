@@ -6,7 +6,7 @@
 #include <atomic>
 #include <mutex>
 
-#define cCount 200
+#define cCount 1000
 #define tCount 4
 bool g_bExit = true;
 std::atomic_int sendCount(0);
@@ -78,7 +78,7 @@ void sendThread(int id)//four thread 1~4
     {
         for(int i = begin; i < end; i++)
         {
-            if(Time.getEpalsedSecond() >= 0.1)
+            if(Time.getEpalsedSecond() >= 0.0)
             {
                 if(clients[i].sendData(&netmsg_Login) == -1)
                 {
@@ -110,8 +110,8 @@ int main()
     for(int n = 0; n < tCount; n++)
     {
         //launch send thread
-        std::thread t1(sendThread,n + 1);
-        t1.detach();    //detach from main thread
+        std::thread t2(sendThread,n + 1);
+        t2.detach();    //detach from main thread
     }
 
     CELLTimestamp tTime;

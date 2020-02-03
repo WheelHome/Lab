@@ -4,6 +4,7 @@
 #include <list>
 #include <functional>
 
+
 /*class CellTask
 {
 private:
@@ -29,10 +30,10 @@ class CellSendMsgToClientTask:public CellTask
 {
 private:
     ClientSocketPtr _pClient;
-    DataHeader* _pHeader;
+    netmsg_DataHeader* _pHeader;
     std::mutex _mutex;
 public:
-    CellSendMsgToClientTask(ClientSocketPtr pClient,DataHeader* header)
+    CellSendMsgToClientTask(ClientSocketPtr pClient,netmsg_DataHeader* header)
     {
         _pClient = pClient;
         _pHeader = header;
@@ -68,8 +69,12 @@ class CellTaskServer
 private:
     std::list<CellTask> _tasks;
     std::list<CellTask> _tasksBuf;
+    CellSemaphore _sem;
     std::mutex _mutex;
     std::thread  _thread;
+    bool _isRun = false;
+public:
+    int _serverId = -1;
 public:
     CellTaskServer()
     {
@@ -88,13 +93,14 @@ public:
 
     void Start()
     {
+        _isRun = true;
         _thread = std::thread(std::mem_fun(&CellTaskServer::onRun),this);
         _thread.detach();
     }
 
     void onRun()
     {
-        while(true)
+        while(_isRun)
         {
             _mutex.lock();
             if(!_tasksBuf.empty())
@@ -118,9 +124,17 @@ public:
             }
             _tasks.clear();
         }
+        std::cout << "CellTaskServer: "<< _serverId <<"onRun" << std::endl;
+        _sem.wakeup();
     }
 
-
+    void Close()
+    {
+        std::cout << "CellTaskServer: "<< _serverId <<".Close() 1" << std::endl;
+        _isRun = false;
+        _sem.wait();
+        std::cout << "CellTaskServer: "<< _serverId <<".Close() 2" << std::endl;
+    }
 };
 
 #endif

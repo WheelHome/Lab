@@ -5,10 +5,15 @@
 #include "Cell.hpp"
 #include "CELLObjPoll.hpp"
 
-#define CLIENT_HEART_DEAD_TIME 5000
+#define CLIENT_HEART_DEAD_TIME 60000
+#define CLIENT_SEND_BUFF_TIME 2000
+
 //Client data type
 class CellClient : public ObjectPollBase<CellClient,1000>
 {
+public:
+    int id = -1;
+    int _serverId = -1;
 private:
     SOCKET _sockfd;//socket fd_set desc set
     //msgBuf
@@ -23,8 +28,53 @@ private:
 
     //Heart beat death time
     time_t _dtHeart;
+    //last send msg data time
+    time_t _dtSend;
+
+    std::mutex _mutex;
 
 public:
+
+    int sendDataImme(netmsg_DataHeader* header)
+    {
+        sendData(header);
+        sendDataImme();
+        return 1;
+    }
+
+    int sendDataImme()
+    {
+        int ret = SOCKET_ERROR;
+        if(_lastPos > 0 && SOCKET_ERROR != _sockfd)
+        {
+            ret = send(_sockfd,_szSendBuf,_lastPos,0);
+            _mutex.lock();
+            _lastPos = 0;
+            _mutex.unlock();
+            resetDTSend();
+        }
+        return ret;
+    }
+
+    bool checkSend(time_t dt)
+    {
+        _dtSend += dt;
+        if(_dtSend >= CLIENT_SEND_BUFF_TIME)
+        {
+            //std::cout << "CheckSend:" << _sockfd << " time:" << _dtSend << std::endl;
+            //immediately send  sendBuf data 
+            sendDataImme();
+            //reset send time
+            return true;
+        }
+        return false;
+    }
+
+    void resetDTSend()
+    {
+        _dtSend = 0;
+    }
+
     bool checkHeart(time_t dt)
     {
         _dtHeart += dt;
@@ -43,6 +93,8 @@ public:
 
     CellClient(SOCKET _sockfd = INVALID_SOCKET)
     {
+        static int n = 1;
+        id = n++;
         this->_sockfd = _sockfd;
         bzero(_szMsgBuf,sizeof(_szMsgBuf));
         this->_lastPos = 0;
@@ -51,7 +103,18 @@ public:
         this->_lastSendPos = 0;
 
         resetDTHeart();
+        resetDTSend();
     }
+
+    ~CellClient()
+    {
+        std::cout << "s: " << _serverId << " CellClient: "<< id <<"~CellClient() 1" << std::endl;
+        if(_sockfd != INVALID_SOCKET)
+        {
+           closesocket(_sockfd);
+        }
+        _sockfd = INVALID_SOCKET;
+    }   
 
     SOCKET getSockfd()
     {
@@ -75,7 +138,7 @@ public:
         this->_lastPos = newPos;
     }
 
-    int sendData(DataHeader* header)
+    int sendData(netmsg_DataHeader* header)
     {
         int ret = SOCKET_ERROR;
         int nSendLen = header->dataLength;
@@ -100,6 +163,7 @@ public:
                     ret = send(_sockfd,_szSendBuf,SEND_BUFF_SIZE,0);
                     //set tail of data to zero
                     _lastSendPos = 0;
+                    resetDTSend();
                     if(ret == SOCKET_ERROR)
                     {
                         return ret;

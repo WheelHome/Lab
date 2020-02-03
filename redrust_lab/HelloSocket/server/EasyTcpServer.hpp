@@ -4,6 +4,7 @@
 #include "Cell.hpp"
 #include "messageHeader.hpp"
 #include "CELLTimestamp.hpp"
+#include "CellSemaphore.hpp"
 #include "CellClient.hpp"
 #include "CellTask.hpp"
 #include "INetEvent.hpp"
@@ -145,7 +146,6 @@ public:
             }
         }
         pMinServer->addClient(pClient);
-        OnNetJoin(pClient);
     }
 
     //launch CellServer
@@ -153,7 +153,7 @@ public:
     {
         for(int n = 0; n < nCellServer; n++)
         {
-            auto ser = std::make_shared<CellServer>(_sock);
+            auto ser = std::make_shared<CellServer>(n + 1);
             _cellServers.push_back(ser);
             //registed msg event object
             ser->setEventObj(this);
@@ -164,10 +164,10 @@ public:
     //Close socket
     void CLose()
     {
+        std::cout << "EasyTcpServer.Close() 1" << std::endl;
         if(_sock != INVALID_SOCKET)
         {
             closesocket(_sock);
-
             #ifdef _WIN32
             WSACleanup();
             #endif
@@ -180,6 +180,7 @@ public:
         #ifdef _WIN32
         WSACleanup();
         #endif
+        std::cout << "EasyTcpServer.Close() 2" << std::endl;
     }
 
     //Handle net msg
@@ -243,7 +244,7 @@ public:
         _clientCount--;
     }
 
-    virtual void OnNetMsg(CellServer* pCellServer,ClientSocketPtr& pClient,DataHeader* header)
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocketPtr& pClient,netmsg_DataHeader* header)
     {
         _msgCount++;
     }

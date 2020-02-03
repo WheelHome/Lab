@@ -13,12 +13,12 @@ enum CMD
     CMD_S2C_HEART,
     CMD_ERROR
 };
-struct DataHeader
+struct netmsg_DataHeader
 {
     /* data */
-    DataHeader()
+    netmsg_DataHeader()
     {
-        dataLength = sizeof(DataHeader);
+        dataLength = sizeof(netmsg_DataHeader);
         cmd = CMD_ERROR;
     }
     short dataLength;
@@ -27,7 +27,7 @@ struct DataHeader
 };
 
 //DataPackage
-struct netmsg_Login: public DataHeader
+struct netmsg_Login: public netmsg_DataHeader
 {
     netmsg_Login()
     {
@@ -46,7 +46,7 @@ struct netmsg_Login: public DataHeader
     char data[906];
 };
 
-struct netmsg_LoginR: public DataHeader
+struct netmsg_LoginR: public netmsg_DataHeader
 {
     netmsg_LoginR()
     {
@@ -58,7 +58,7 @@ struct netmsg_LoginR: public DataHeader
     char data[92];
 };
 
-struct netmsg_Logout: public DataHeader
+struct netmsg_Logout: public netmsg_DataHeader
 {
     netmsg_Logout()
     {
@@ -68,7 +68,7 @@ struct netmsg_Logout: public DataHeader
     char userName[32];
 };
 
-struct netmsg_LogoutR: public DataHeader
+struct netmsg_LogoutR: public netmsg_DataHeader
 {
     netmsg_LogoutR()
     {
@@ -79,7 +79,7 @@ struct netmsg_LogoutR: public DataHeader
     int result;
 };
 
-struct netmsg_NewUserJoin : public DataHeader
+struct netmsg_NewUserJoin : public netmsg_DataHeader
 {
     netmsg_NewUserJoin()
     {
@@ -92,7 +92,7 @@ struct netmsg_NewUserJoin : public DataHeader
     /* data */
 };
 
-struct netmsg_C2S_Heart : public DataHeader
+struct netmsg_C2S_Heart : public netmsg_DataHeader
 {
     netmsg_C2S_Heart()
     {
@@ -102,7 +102,7 @@ struct netmsg_C2S_Heart : public DataHeader
     /* data */
 };
 
-struct netmsg_S2C_Heart : public DataHeader
+struct netmsg_S2C_Heart : public netmsg_DataHeader
 {
     netmsg_S2C_Heart()
     {

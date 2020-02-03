@@ -139,7 +139,7 @@ public:
     }
 
     //response net data
-    virtual void onNetMsg(DataHeader* header)
+    virtual void onNetMsg(netmsg_DataHeader* header)
     {
         switch (header->cmd)
         {
@@ -167,7 +167,7 @@ public:
     #define RECV_BUFF_SIZE 10240
     #endif
     //msgBuf
-    char _szMsgBuf[RECV_BUFF_SIZE * 10] = {};
+    char _szMsgBuf[RECV_BUFF_SIZE * 5] = {};
     //The msgBuf end
     int _lastPos = 0;
     //received data
@@ -184,10 +184,10 @@ public:
         //Move msgBuf pointer to it's tail
         _lastPos += nLen;
         //Received a integrated msgHeader
-        while(_lastPos >= sizeof(DataHeader))
+        while(_lastPos >= sizeof(netmsg_DataHeader))
         {
             //There can be know the all msgData
-            DataHeader* header = (DataHeader*)_szMsgBuf;
+            netmsg_DataHeader* header = (netmsg_DataHeader*)_szMsgBuf;
             //Received a integrated msgData
             if(_lastPos > header->dataLength)
             {
@@ -210,7 +210,7 @@ public:
     }
 
     //send Data to server
-    int sendData(DataHeader* header)
+    int sendData(netmsg_DataHeader* header)
     {
         int ret = -1;
         if(isRun() && header)

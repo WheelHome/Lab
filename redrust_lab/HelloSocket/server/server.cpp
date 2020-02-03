@@ -9,7 +9,7 @@ public:
         EasyTcpServer::OnNetLeave(pClient);
     }
 
-    virtual void OnNetMsg(CellServer* pCellServer,ClientSocketPtr& pClient,DataHeader* header)
+    virtual void OnNetMsg(CellServer* pCellServer,ClientSocketPtr& pClient,netmsg_DataHeader* header)
     {
         EasyTcpServer::OnNetMsg(pCellServer,pClient,header);
         switch (header->cmd)
@@ -91,5 +91,6 @@ int main()
     {
         server.onRun();
     }
-    return 0;
+    server.CLose();
+    exit(0);
 }
