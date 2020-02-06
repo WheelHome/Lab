@@ -18,7 +18,11 @@ public:
         {
             pClient->resetDTHeart();
             netmsg_LoginR ret;
-            pClient->sendData(&ret);
+            if(pClient->sendData(&ret) == 0)
+            {
+                //SendBuf is fulling.
+                
+            }
             //pCellServer->addSendTask(pClient,header);
             break;
         }
@@ -56,25 +60,6 @@ private:
 
 };
 
-bool g_bExit = true;
-void cmdThread()
-{
-    while(true)
-    {
-        char cmdBuf[256] = {};
-        std::cin >> cmdBuf;
-        if(strcmp(cmdBuf,"exit") == 0)
-        {
-            std::cout << "Exited" << std::endl;
-            g_bExit = false;
-            break ;
-        }
-        else
-        {
-            std::cout << "Not supported command!" << std::endl;
-        }
-    }
-}
 
 int main()
 {
@@ -83,14 +68,25 @@ int main()
     server.Bind(nullptr,4567);
     server.Listen(1023);
     server.Start(4);
+    /*
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread
+    */
 
-
-    while(g_bExit)
+    while(true)
     {
-        server.onRun();
+        char cmdBuf[256] = {};
+        std::cin >> cmdBuf;
+        if(strcmp(cmdBuf,"exit") == 0)
+        {
+            std::cout << "Exited" << std::endl;
+            server.CLose();
+            break;
+        }
+        else
+        {
+            std::cout << "Not supported command!" << std::endl;
+        }
     }
-    server.CLose();
     exit(0);
 }

@@ -3,8 +3,7 @@
 
 #include "Cell.hpp"
 #include "messageHeader.hpp"
-#include "CELLTimestamp.hpp"
-#include "CellSemaphore.hpp"
+#include "CellTimestamp.hpp"
 #include "CellClient.hpp"
 #include "CellTask.hpp"
 #include "INetEvent.hpp"
@@ -15,16 +14,53 @@ typedef std::shared_ptr<CellServer> CellServerPtr;
 class EasyTcpServer :public INetEvent
 {
 private:
-    SOCKET _sock;
+    CellThread _thread;
     //msg dealed object
     std::vector<CellServerPtr> _cellServers;
     //Time count
     CELLTimestamp _tTime;
+    SOCKET _sock;
 protected:
     //received msg packages
     std::atomic_int _recvCount;
     std::atomic_int _clientCount;
     std::atomic_int _msgCount;
+private:
+    //Handle net msg
+    void onRun(CellThread& pThread)
+    {
+        while(pThread.isRun())
+        {
+            timeToMsg();
+            // socket
+            fd_set fdRead;
+            fd_set fdWrite;
+            fd_set fdExp;
+
+            FD_ZERO(&fdRead);
+            FD_ZERO(&fdWrite);
+            FD_ZERO(&fdExp);
+
+            FD_SET(_sock,&fdRead);
+            FD_SET(_sock,&fdWrite);
+            FD_SET(_sock,&fdExp);
+            //nfds
+
+            timeval t = {0,10};
+            int ret = select(_sock + 1,&fdRead,&fdWrite,&fdExp,&t);
+            if(ret < 0)
+            {
+                std::cout << "EasyTcpServer onRun select error!" << std::endl;
+                pThread.Exit();
+                break;
+            }
+            if(FD_ISSET(_sock,&fdRead))
+            {
+                FD_CLR(_sock,&fdRead);
+                Accept();
+            }
+        }
+    }
 public:
 
     EasyTcpServer()
@@ -123,7 +159,7 @@ public:
         #endif
         if(cSock == INVALID_SOCKET)
         {
-            std::cout << "Received wrong client socket=" << cSock  << std::endl;
+            std::cout << "EasyTcpServer Accept error received wrong client socket=" << cSock  << std::endl;
             return -1;
         }
         else
@@ -159,12 +195,19 @@ public:
             ser->setEventObj(this);
             ser->Start();
         }
+        _thread.Start(
+            nullptr,
+            [this](CellThread& pThread){
+                onRun(pThread);
+            }
+        );
     }
 
     //Close socket
     void CLose()
     {
         std::cout << "EasyTcpServer.Close() 1" << std::endl;
+        _thread.Close();
         if(_sock != INVALID_SOCKET)
         {
             closesocket(_sock);
@@ -183,48 +226,6 @@ public:
         std::cout << "EasyTcpServer.Close() 2" << std::endl;
     }
 
-    //Handle net msg
-    bool onRun()
-    {
-        if(isRun())
-        {
-            timeToMsg();
-            // socket
-            fd_set fdRead;
-            fd_set fdWrite;
-            fd_set fdExp;
-
-            FD_ZERO(&fdRead);
-            FD_ZERO(&fdWrite);
-            FD_ZERO(&fdExp);
-
-            FD_SET(_sock,&fdRead);
-            FD_SET(_sock,&fdWrite);
-            FD_SET(_sock,&fdExp);
-            //nfds
-
-            timeval t = {0,10};
-            int ret = select(_sock + 1,&fdRead,&fdWrite,&fdExp,&t);
-            if(ret < 0)
-            {
-                std::cout << "select error!" << std::endl;
-                CLose();
-                return false;
-            }
-            if(FD_ISSET(_sock,&fdRead))
-            {
-                FD_CLR(_sock,&fdRead);
-                Accept();
-            }
-        }
-        return true;
-    }
-
-    //isRun
-    bool isRun()
-    {
-        return _sock != INVALID_SOCKET;
-    }
 
     //response net msg
     void timeToMsg()

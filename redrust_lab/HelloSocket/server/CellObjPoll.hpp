@@ -15,7 +15,7 @@ struct NodeHeader
 };
 
 template<class Type,size_t nPollNum>
-class CELLObjectPoll
+class CellObjectPoll
 {
 private:
     NodeHeader* _pHeader;
@@ -103,13 +103,13 @@ public:
         }
     }
 
-    CELLObjectPoll(/* args */)
+    CellObjectPoll(/* args */)
     {
         _pBuf = nullptr;
         InitPoll();
     }
 
-    ~CELLObjectPoll()
+    ~CellObjectPoll()
     {
         if(_pBuf)
         {
@@ -122,7 +122,7 @@ template<class Type,size_t nPollNum>
 class ObjectPollBase
 {
 private:
-    typedef CELLObjectPoll<Type,nPollNum> ClassTypePoll;
+    typedef CellObjectPoll<Type,nPollNum> ClassTypePoll;
     static ClassTypePoll&  objectPoll()
     {
         static ClassTypePoll sPoll;

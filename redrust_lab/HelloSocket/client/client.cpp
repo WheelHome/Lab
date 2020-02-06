@@ -1,7 +1,7 @@
 
 #include "messageHeader.hpp"
 #include "EasyTcpClient.hpp"
-#include "CELLTimestamp.hpp"
+#include "CellTimestamp.hpp"
 
 #include <atomic>
 #include <mutex>

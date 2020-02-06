@@ -35,6 +35,7 @@
 #include <map>
 #include <signal.h>
 #include <memory>
+#include <functional>
 
 #include "Allocator.h"
 

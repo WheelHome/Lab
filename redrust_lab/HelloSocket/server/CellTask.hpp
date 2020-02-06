@@ -2,8 +2,7 @@
 #define _CELL_TASK_H_
 
 #include <list>
-#include <functional>
-
+#include "CellThread.hpp"
 
 /*class CellTask
 {
@@ -69,10 +68,8 @@ class CellTaskServer
 private:
     std::list<CellTask> _tasks;
     std::list<CellTask> _tasksBuf;
-    CellSemaphore _sem;
+    CellThread _thread;
     std::mutex _mutex;
-    std::thread  _thread;
-    bool _isRun = false;
 public:
     int _serverId = -1;
 public:
@@ -93,14 +90,14 @@ public:
 
     void Start()
     {
-        _isRun = true;
-        _thread = std::thread(std::mem_fun(&CellTaskServer::onRun),this);
-        _thread.detach();
+        _thread.Start(nullptr,[this](CellThread& pThread){
+            onRun(pThread);
+        });
     }
 
-    void onRun()
+    void onRun(CellThread& pThread)
     {
-        while(_isRun)
+        while(pThread.isRun())
         {
             _mutex.lock();
             if(!_tasksBuf.empty())
@@ -125,14 +122,12 @@ public:
             _tasks.clear();
         }
         std::cout << "CellTaskServer: "<< _serverId <<"onRun" << std::endl;
-        _sem.wakeup();
     }
 
     void Close()
     {
         std::cout << "CellTaskServer: "<< _serverId <<".Close() 1" << std::endl;
-        _isRun = false;
-        _sem.wait();
+        _thread.Close();
         std::cout << "CellTaskServer: "<< _serverId <<".Close() 2" << std::endl;
     }
 };

@@ -16,8 +16,8 @@ private:
     INetEvent* _pNetEvent;
 
     CellTaskServer  _taskServer;
-    CellSemaphore _sem;
-
+    CellThread _thread;
+    
     //backup fdRead
     fd_set _fdRead_bak;
 
@@ -25,7 +25,7 @@ private:
     int _id = -1;
     //client list change
     bool _clients_change = true;
-    bool _isRun;
+
     SOCKET _maxSock; 
 
 private:
@@ -60,16 +60,19 @@ public:
 
     void Start()
     {
-        if(!_isRun)
-        {
-            _isRun = true;
-            std::thread pThread = std::thread(std::mem_fun(&CellServer::onRun),this);
-            pThread.detach();
-            _taskServer.Start();
-        }
+        _taskServer.Start();
+        _thread.Start(nullptr,
+        [this](CellThread& pThread){
+            onRun(pThread);
+        },
+        [this](CellThread& pThread){
+           this->ClearClients();
+        }  
+        );
     }
 
     //send data to single socket
+    /*
     int sendData(SOCKET cSock,netmsg_DataHeader* header)
     {
         if(_isRun && header)
@@ -81,7 +84,7 @@ public:
             send(cSock,(const char*)header,header->dataLength,0);
         }
         return SOCKET_ERROR;
-    }
+    }*/
 
     void addClient(ClientSocketPtr pClient)
     {
@@ -103,9 +106,9 @@ public:
 
  
     //Handle net msg
-    bool onRun()
+    void onRun(CellThread& pThread)
     {
-        while(_isRun)
+        while(pThread.isRun())
         {
             //From buffer to get cilent data
             _mutex.lock();
@@ -139,8 +142,6 @@ public:
 
             FD_ZERO(&fdRead);
             FD_ZERO(&fdWrite);
-            FD_ZERO(&fdExp);
-
             if(_clients_change)
             {
                 _clients_change = false;
@@ -159,28 +160,28 @@ public:
             {
                 memcpy(&fdRead,&_fdRead_bak,sizeof(fd_set));
             }
+            memcpy(&fdWrite,&_fdRead_bak,sizeof(fd_set));
+            memcpy(&fdExp,&_fdRead_bak,sizeof(fd_set));
             //nfds
             timeval t = {0,10};
             int ret = select(_maxSock + 1,&fdRead,&fdWrite,&fdExp,&t);
             if(ret < 0)
             {
-                std::cout << "Select error!" << std::endl;
+                std::cout << "CellServer " << _id << "onRun Select error exit!" << std::endl;
                 std::cout << errno << std::endl;
-                CLose();
-                return false;
+                pThread.Exit();
+                break;
             }
             /*
             else if (ret == 0)
             {
                 continue;
             }*/
-            
             ReadData(fdRead);
-         //   CheckTime();
+         //   WriteData(fdWrite);
+         //   WriteData(fdExp);
+            CheckTime();
         }
-        this->ClearClients();
-        _sem.wakeup();
-        return true;
     }
 
     void CheckTime()
@@ -196,17 +197,61 @@ public:
                 if (_pNetEvent)
                     _pNetEvent->OnNetLeave(iter->second);
                 _clients_change = true;
-                _mutex.lock();
                 auto iterOld = iter++;
                 _clients.erase(iterOld);
-                _mutex.unlock();
                 //closesocket(iterOld->second->getSockfd());
             }else
             {
-                iter->second->checkSend(dt);
+                // iter->second->checkSend(dt);
                 iter++;
             }
         }
+    }
+
+    void OnClientLeave(ClientSocketPtr& pClient)
+    {
+        if (_pNetEvent)
+            _pNetEvent->OnNetLeave(pClient);
+        _clients_change = true;
+    }
+
+    void WriteData(fd_set& fdWrite)
+    {
+        #ifdef _WIN32
+        for (int n = 0; n < fdWrite.fd_count; n++)
+        {
+            auto iter  = _clients.find(fdWrite.fd_array[n]);
+            if (iter != _clients.end())
+            {
+                if (0 == iter->second->sendDataImme())
+                {
+                    //closesocket(iter->first);
+                    OnClientLeave(iter->second);
+                    delete iter->second;
+                    _clients.erase(iter->first);
+                }
+            }
+        }
+        #else
+        
+        std::vector<ClientSocketPtr> temp;
+        for (auto& iter : _clients)
+        {
+            if (FD_ISSET(iter.first, &fdWrite))
+            {
+                if (-1 == iter.second->sendDataImme())
+                {
+                    OnClientLeave(iter.second);
+                    temp.push_back(iter.second);
+                }
+            }  
+        }
+        for (auto pClient : temp)
+        {
+            _clients.erase(pClient->getSockfd());
+         //   closesocket(pClient->getSockfd());
+        }
+        #endif
     }
 
     void ReadData(fd_set& fdRead)
@@ -219,9 +264,7 @@ public:
             {
                 if (-1 == RecvData(iter->second))
                 {
-                    if (_pNetEvent)
-                        _pNetEvent->OnNetLeave(iter->second);
-                    _clients_change = true;
+                    OnClientLeave(iter->second);
                     //closesocket(iter->first);
                     delete iter->second;
                     _clients.erase(iter->first);
@@ -239,9 +282,7 @@ public:
             {
                 if (-1 == recvData(iter.second))
                 {
-                    if (_pNetEvent)
-                        _pNetEvent->OnNetLeave(iter.second);
-                    _clients_change = true;
+                    OnClientLeave(iter.second);
                     temp.push_back(iter.second);
                 }
             }  
@@ -257,14 +298,11 @@ public:
     //Close socket
     void CLose()
     {
-        if(_isRun)
-        {
-            std::cout << "CellServer:" << _id << ".Close() 1" << std::endl;
-            _taskServer.Close();
-            _isRun = false;
-            _sem.wait();
-            std::cout << "CellServer:" << _id << ".Close() 2" << std::endl;
-        }
+
+        std::cout << "CellServer:" << _id << ".Close() 1" << std::endl;
+        _taskServer.Close();
+        _thread.Close();
+        std::cout << "CellServer:" << _id << ".Close() 2" << std::endl;
     }    
     
     int recvData(ClientSocketPtr pClient)

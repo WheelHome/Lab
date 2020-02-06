@@ -3,10 +3,10 @@
 
 
 #include "Cell.hpp"
-#include "CELLObjPoll.hpp"
+#include "CellObjPoll.hpp"
 
 #define CLIENT_HEART_DEAD_TIME 60000
-#define CLIENT_SEND_BUFF_TIME 2000
+#define CLIENT_SEND_BUFF_TIME 5000
 
 //Client data type
 class CellClient : public ObjectPollBase<CellClient,1000>
@@ -18,13 +18,14 @@ private:
     SOCKET _sockfd;//socket fd_set desc set
     //msgBuf
     char _szMsgBuf[RECV_BUFF_SIZE] = {};
-    //The msgBuf end
-    long unsigned int _lastPos = 0;
 
     //sendBuf
     char _szSendBuf[SEND_BUFF_SIZE] = {};
     //The msgBuf end
     long unsigned int _lastSendPos = 0;
+    //The msgBuf end
+    long unsigned int _lastPos = 0;
+    int _sendBuffFullCount = 0;
 
     //Heart beat death time
     time_t _dtHeart;
@@ -38,19 +39,17 @@ public:
     int sendDataImme(netmsg_DataHeader* header)
     {
         sendData(header);
-        sendDataImme();
-        return 1;
+        return sendDataImme();
     }
 
     int sendDataImme()
     {
-        int ret = SOCKET_ERROR;
-        if(_lastPos > 0 && SOCKET_ERROR != _sockfd)
+        int ret = 0;
+        if(_lastPos > 0 && INVALID_SOCKET != _sockfd)
         {
             ret = send(_sockfd,_szSendBuf,_lastPos,0);
-            _mutex.lock();
             _lastPos = 0;
-            _mutex.unlock();
+            _sendBuffFullCount = 0;
             resetDTSend();
         }
         return ret;
@@ -140,43 +139,23 @@ public:
 
     int sendData(netmsg_DataHeader* header)
     {
-        int ret = SOCKET_ERROR;
+        int ret = 0;
         int nSendLen = header->dataLength;
         const char* pSendData = (const char*)header;
-        while(true)
+        if(_lastSendPos + nSendLen <= SEND_BUFF_SIZE)
         {
-            if(_lastSendPos + nSendLen >= SEND_BUFF_SIZE)
+            //Copy sending data to sendBuf's tail
+            memcpy(_szSendBuf + _lastSendPos,pSendData,nSendLen);
+            //Move tail of sendBuf to remaining array place
+            _lastSendPos += nSendLen;
+            if(_lastSendPos == SEND_BUFF_SIZE)
             {
-                //calculate remain place
-                int nCopyLen = SEND_BUFF_SIZE - _lastSendPos;
-                memcpy(_szSendBuf + _lastSendPos,pSendData,nCopyLen);
-                //Remain data
-                pSendData += nCopyLen;
-                //Remain data length
-                nSendLen -= nCopyLen;
-                if( header && _sockfd)
-                {
-                    sigset_t set;
-                    sigemptyset(&set);
-                    sigaddset(&set, SIGPIPE);
-                    sigprocmask(SIG_BLOCK, &set, NULL); 
-                    ret = send(_sockfd,_szSendBuf,SEND_BUFF_SIZE,0);
-                    //set tail of data to zero
-                    _lastSendPos = 0;
-                    resetDTSend();
-                    if(ret == SOCKET_ERROR)
-                    {
-                        return ret;
-                    }
-                }
-            }else
-            {
-                //Copy sending data to sendBuf's tail
-                memcpy(_szSendBuf + _lastSendPos,pSendData,nSendLen);
-                //Move tail of sendBuf to remaining array place
-                _lastSendPos += nSendLen;
-                break;
+                _sendBuffFullCount++;
             }
+            return nSendLen;
+        }else
+        {
+            _sendBuffFullCount++;
         }
         return ret;
     }
