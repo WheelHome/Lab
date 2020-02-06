@@ -21,7 +21,7 @@ public:
             if(pClient->sendData(&ret) == 0)
             {
                 //SendBuf is fulling.
-                
+
             }
             //pCellServer->addSendTask(pClient,header);
             break;
@@ -63,6 +63,10 @@ private:
 
 int main()
 {
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    sigprocmask(SIG_BLOCK, &set, NULL);
     MyServer server;
     server.initSocket();
     server.Bind(nullptr,4567);

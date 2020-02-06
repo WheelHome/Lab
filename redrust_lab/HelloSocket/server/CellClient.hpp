@@ -4,6 +4,7 @@
 
 #include "Cell.hpp"
 #include "CellObjPoll.hpp"
+#include "CellMsgBuffer.hpp"
 
 #define CLIENT_HEART_DEAD_TIME 60000
 #define CLIENT_SEND_BUFF_TIME 5000
@@ -16,26 +17,17 @@ public:
     int _serverId = -1;
 private:
     SOCKET _sockfd;//socket fd_set desc set
-    //msgBuf
-    char _szMsgBuf[RECV_BUFF_SIZE] = {};
-
-    //sendBuf
-    char _szSendBuf[SEND_BUFF_SIZE] = {};
-    //The msgBuf end
-    long unsigned int _lastSendPos = 0;
-    //The msgBuf end
-    long unsigned int _lastPos = 0;
+    CellMsgBuffer _sendBuffer;
+    CellMsgBuffer _recvBuffer;
     int _sendBuffFullCount = 0;
 
     //Heart beat death time
     time_t _dtHeart;
     //last send msg data time
     time_t _dtSend;
-
     std::mutex _mutex;
 
 public:
-
     int sendDataImme(netmsg_DataHeader* header)
     {
         sendData(header);
@@ -44,15 +36,8 @@ public:
 
     int sendDataImme()
     {
-        int ret = 0;
-        if(_lastPos > 0 && INVALID_SOCKET != _sockfd)
-        {
-            ret = send(_sockfd,_szSendBuf,_lastPos,0);
-            _lastPos = 0;
-            _sendBuffFullCount = 0;
-            resetDTSend();
-        }
-        return ret;
+        resetDTSend(); 
+        return _sendBuffer.writeToSocket(_sockfd);
     }
 
     bool checkSend(time_t dt)
@@ -90,16 +75,13 @@ public:
         _dtHeart = 0;
     }
 
-    CellClient(SOCKET _sockfd = INVALID_SOCKET)
+    CellClient(SOCKET _sockfd = INVALID_SOCKET) :
+        _sendBuffer(SEND_BUFF_SIZE),
+        _recvBuffer(RECV_BUFF_SIZE)
     {
         static int n = 1;
         id = n++;
         this->_sockfd = _sockfd;
-        bzero(_szMsgBuf,sizeof(_szMsgBuf));
-        this->_lastPos = 0;
-
-        bzero(_szSendBuf,sizeof(_szSendBuf));
-        this->_lastSendPos = 0;
 
         resetDTHeart();
         resetDTSend();
@@ -122,42 +104,38 @@ public:
         return SOCKET_ERROR;
     }
 
-    char* getMsgBuf()
-    {
-        return _szMsgBuf;
-    }
-
-    long unsigned int getLastPos()
-    {
-        return _lastPos;
-    }
-    
-    void setLastPos(int newPos)
-    {
-        this->_lastPos = newPos;
-    }
-
     int sendData(netmsg_DataHeader* header)
     {
         int ret = 0;
-        int nSendLen = header->dataLength;
         const char* pSendData = (const char*)header;
-        if(_lastSendPos + nSendLen <= SEND_BUFF_SIZE)
+        if(_sendBuffer.push(pSendData,header->dataLength))
         {
-            //Copy sending data to sendBuf's tail
-            memcpy(_szSendBuf + _lastSendPos,pSendData,nSendLen);
-            //Move tail of sendBuf to remaining array place
-            _lastSendPos += nSendLen;
-            if(_lastSendPos == SEND_BUFF_SIZE)
-            {
-                _sendBuffFullCount++;
-            }
-            return nSendLen;
-        }else
-        {
-            _sendBuffFullCount++;
+            return header->dataLength;
         }
         return ret;
+    }
+
+    int recvData()
+    {
+        return _recvBuffer.readFromSocket(_sockfd);
+    }
+
+    bool hasMsg()
+    {
+        return _recvBuffer.hasMsg();
+    }
+
+    netmsg_DataHeader* frontMsg()
+    {
+        return (netmsg_DataHeader*)_recvBuffer.data();
+    }
+
+    void popFrontMsg()
+    {
+        if(hasMsg())
+        {
+            _recvBuffer.pop(frontMsg()->dataLength);
+        }
     }
 };
 

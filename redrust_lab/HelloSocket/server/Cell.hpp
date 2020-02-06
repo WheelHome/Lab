@@ -38,6 +38,6 @@
 #include <functional>
 
 #include "Allocator.h"
-
+#include "messageHeader.hpp"
 
 #endif  //!__CELL__H__

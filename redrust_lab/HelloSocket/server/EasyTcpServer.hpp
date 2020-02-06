@@ -2,7 +2,6 @@
 #define _EASYTCPSERVER_HPP_
 
 #include "Cell.hpp"
-#include "messageHeader.hpp"
 #include "CellTimestamp.hpp"
 #include "CellClient.hpp"
 #include "CellTask.hpp"

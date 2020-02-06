@@ -71,21 +71,6 @@ public:
         );
     }
 
-    //send data to single socket
-    /*
-    int sendData(SOCKET cSock,netmsg_DataHeader* header)
-    {
-        if(_isRun && header)
-        {
-            sigset_t set;
-            sigemptyset(&set);
-            sigaddset(&set, SIGPIPE);
-            sigprocmask(SIG_BLOCK, &set, NULL);
-            send(cSock,(const char*)header,header->dataLength,0);
-        }
-        return SOCKET_ERROR;
-    }*/
-
     void addClient(ClientSocketPtr pClient)
     {
         std::lock_guard<std::mutex> lock(_mutex);
@@ -178,7 +163,7 @@ public:
                 continue;
             }*/
             ReadData(fdRead);
-         //   WriteData(fdWrite);
+            WriteData(fdWrite);
          //   WriteData(fdExp);
             CheckTime();
         }
@@ -307,41 +292,19 @@ public:
     
     int recvData(ClientSocketPtr pClient)
     {
-        char* szRecv = pClient->getMsgBuf() + pClient->getLastPos();
-        int nLen = recv(pClient->getSockfd(),szRecv,RECV_BUFF_SIZE - pClient->getLastPos(),0);
-        _pNetEvent->OnNetRecv(pClient);
+        int nLen = pClient->recvData();
         if(nLen <= 0)
         {
-            //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
             return -1;
         }
-
-        pClient->resetDTHeart();
-        //Move msgBuf pointer to it's tail
-        pClient->setLastPos(pClient->getLastPos() + nLen) ;
-        //Received a integrated msgHeader
-        while(pClient->getLastPos()  >= sizeof(netmsg_DataHeader))
+        _pNetEvent->OnNetRecv(pClient);
+        while(pClient->hasMsg())
         {
-            //There can be know the all msgData
-            netmsg_DataHeader* header = (netmsg_DataHeader*)pClient->getMsgBuf();
-            //Received a integrated msgData
-            if((int)pClient->getLastPos() > header->dataLength)
-            {
-                //The msgData length  is waitting to handle in msgBuf
-                int nSize = pClient->getLastPos() - header->dataLength;
-                //Deal with net msg
-                onNetMsg(pClient,header);
-                //Move the untrated msgData to begin
-                memcpy(pClient->getMsgBuf() ,pClient->getMsgBuf()  + header->dataLength,pClient->getLastPos() - header->dataLength);
-                //Pointer move to begin
-                pClient->setLastPos(nSize);
-            }
-            else
-            {
-                //Untreated msgData isn't a integrated msg.
-                return 1;
-            }
+            onNetMsg(pClient,pClient->frontMsg());
+            pClient->popFrontMsg();
         }
+        //pClient->resetDTHeart();
+        //Move msgBuf pointer to it's tail
         return 1;
     }
 
