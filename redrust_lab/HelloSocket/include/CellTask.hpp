@@ -121,6 +121,10 @@ public:
             }
             _tasks.clear();
         }
+        for(auto pTask : _tasksBuf)
+        {
+            pTask();
+        }
         std::cout << "CellTaskServer: "<< _serverId <<"onRun" << std::endl;
     }
 

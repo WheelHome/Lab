@@ -7,6 +7,7 @@
 #include "CellTask.hpp"
 #include "INetEvent.hpp"
 #include "CellServer.hpp"
+#include "CellNetWork.hpp"
 
 typedef std::shared_ptr<CellServer> CellServerPtr;
 
@@ -81,11 +82,7 @@ public:
     //Init server socket
     SOCKET initSocket()
     {
-        #ifdef _WIN32
-        WORD ver = MAKEWORD(2,2);
-        WSADATA dat;
-        WSAStartup(ver,&dat);
-        #endif
+        CellNetWork::Instance();
         if(_sock != INVALID_SOCKET)
         {
             std::cout << "Close existed socket=" << _sock << std::endl;
@@ -210,18 +207,12 @@ public:
         if(_sock != INVALID_SOCKET)
         {
             closesocket(_sock);
-            #ifdef _WIN32
-            WSACleanup();
-            #endif
         }
         _sock = INVALID_SOCKET;
         _recvCount = 0;
         _clientCount = 0;
         _msgCount = 0;
         _cellServers.clear();
-        #ifdef _WIN32
-        WSACleanup();
-        #endif
         std::cout << "EasyTcpServer.Close() 2" << std::endl;
     }
 

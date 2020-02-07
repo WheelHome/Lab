@@ -39,5 +39,6 @@
 
 #include "Allocator.h"
 #include "messageHeader.hpp"
+#include "CellLogger.hpp"
 
 #endif  //!__CELL__H__

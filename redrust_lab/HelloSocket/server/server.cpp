@@ -21,7 +21,7 @@ public:
             if(pClient->sendData(&ret) == 0)
             {
                 //SendBuf is fulling.
-
+             //   CellLogger::Instance().Info("%d" ,ret);
             }
             //pCellServer->addSendTask(pClient,header);
             break;
@@ -67,6 +67,8 @@ int main()
     sigemptyset(&set);
     sigaddset(&set, SIGPIPE);
     sigprocmask(SIG_BLOCK, &set, NULL);
+
+    CellLogger::Instance().setLogPath("serverLog.txt","w");
     MyServer server;
     server.initSocket();
     server.Bind(nullptr,4567);
