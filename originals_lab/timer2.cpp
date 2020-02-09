@@ -63,8 +63,19 @@ private:
     uint64_t m_id;
 };
 
+void time2()
+{
+    time_t t = 1577808000;
+    auto tm = localtime(&t);
+    std::cout << tm->tm_year + 1900 << std::endl;
+}
+
+
 int main()
 {
+    time2();
+    return 0;
+
     TaskMgr mgr;
     mgr.AddTask(10, [] {});
     mgr.AddTask(20, [] {});
