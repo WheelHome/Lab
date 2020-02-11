@@ -24,47 +24,48 @@
 #include <iostream>
 #include <vector>
 
+#include "CellNetWork.hpp"
+#include "CellClient.hpp"
+
 class EasyTcpClient
 {
-private:
-    SOCKET _sock;
-    bool _isConnect;
+protected:
+    CellClient* pClient = nullptr;
+    bool _isConnect = false;
+    std::mutex _mutex;
 public:
     EasyTcpClient()
     {
-        _sock = INVALID_SOCKET;
         _isConnect = false;
     }
+
     virtual  ~EasyTcpClient()
     {
         this->CLose();
     }
+
     //Init CellClient
     int initSocket()
     {
-        #ifdef _WIN32
-        WORD ver = MAKEWORD(2,2);
-        WSADATA dat;
-        WSAStartup(ver,&dat);
-        #endif
-        if(_sock != INVALID_SOCKET)
+        CellNetWork::Instance();
+        if(pClient)
         {
-            std::cout << "Close exited socket!" << std::endl;
-            this->CLose();
+            CLose();
         }
-        _sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+        int _sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
         if(_sock == INVALID_SOCKET)
         {
             std::cout << "Create socket  error!" << std::endl;
             return -1;
         }
+        pClient = new CellClient(_sock);
         return 1;
     }
 
     //Connect server
     int Connect(char* ip,short port)
     {
-        if(_sock == INVALID_SOCKET)
+        if(!pClient)
         {
             initSocket();
         }
@@ -78,12 +79,13 @@ public:
         _sin.sin_addr.s_addr = inet_addr(ip);
         #endif
 
-        int ret = connect(_sock,(const sockaddr*)&_sin,sizeof(sockaddr_in));
+        int ret = connect(pClient->getSockfd(),(const sockaddr*)&_sin,sizeof(sockaddr_in));
 
         if( ret == SOCKET_ERROR)
         {
             std::cout << "Connect socket error!" << std::endl;
             _isConnect = false;
+            return ret;
         }
         _isConnect = true;
         return ret;
@@ -92,15 +94,11 @@ public:
     //close CellClient
     void CLose()
     {
-        if(_sock != INVALID_SOCKET)
+        if(pClient)
         {
-            closesocket(_sock);
-            
-            #ifdef _WIN32
-            WSACleanup();
-            #endif
+            delete pClient;
+            pClient = nullptr;
         }
-        _sock = INVALID_SOCKET;
         _isConnect = false;
     }
 
@@ -109,11 +107,15 @@ public:
     {
         if(isRun())
         {
+            SOCKET _sock = pClient->getSockfd();
             fd_set fdReads;
+            fd_set fdWrite;
             FD_ZERO(&fdReads);
             FD_SET(_sock,&fdReads);
-            timeval t = {0,10};
-            int ret = select(_sock + 1,&fdReads,nullptr,nullptr,&t);
+            FD_ZERO(&fdWrite);
+            FD_SET(_sock,&fdWrite);
+            timeval t = {0,1};
+            int ret = select( _sock + 1,&fdReads,&fdWrite,nullptr,&t);
             if(ret < 0)
             {
                 std::cout << "Socket="<< _sock <<" select completed!" << std::endl;
@@ -121,10 +123,18 @@ public:
             }
             if(FD_ISSET(_sock,&fdReads))
             {
-                FD_CLR(_sock,&fdReads);
-                if(recvData(_sock) == -1)
+                if(-1 == recvData())
                 {
-                    std::cout << "Socket="<< _sock << " Select finished" << std::endl;
+                    std::cout << "Socket="<< _sock << " Select read finished" << std::endl;
+                    return false;
+                }
+            }
+            if(FD_ISSET(_sock,&fdWrite))
+            {
+                if(-1 == pClient->sendDataImme())
+                {
+                    std::cout << errno << std::endl;
+                    std::cout << "Socket="<< _sock << " Select write finished" << std::endl;
                     return false;
                 }
             }
@@ -135,92 +145,43 @@ public:
 
     bool isRun()
     {
-        return _sock != INVALID_SOCKET && _isConnect;
+        return pClient && _isConnect;
     }
 
     //response net data
-    virtual void onNetMsg(netmsg_DataHeader* header)
-    {
-        switch (header->cmd)
-        {
-        case CMD_LOGIN_RESULT:
-        {
-            //std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
-            break;
-        }
-        case CMD_LOGOUT_RESULT:
-        {
-            break;
-        }
-        case CMD_NEW_USER_JOIN:
-        {
-            break;
-        }
-        default:
-        {
-        }
-        }
-    }
+    virtual void onNetMsg(netmsg_DataHeader* header) = 0;
 
-    //Buf minimum size 
-    #ifndef RECV_BUFF_SIZE
-    #define RECV_BUFF_SIZE 10240
-    #endif
-    //msgBuf
-    char _szMsgBuf[RECV_BUFF_SIZE * 5] = {};
-    //The msgBuf end
-    int _lastPos = 0;
-    //received data
     //receive data from server
-    int recvData(SOCKET _cSock)
+    int recvData()
     {
-        char* szRecv = _szMsgBuf + _lastPos;
-        int nLen = recv(_cSock,szRecv,(RECV_BUFF_SIZE * 5) - _lastPos ,0);
-        if(nLen <= 0)
+        if(isRun())
         {
-            std::cout << "Connection broken" << std::endl;
-            return -1;
-        }
-        //Move msgBuf pointer to it's tail
-        _lastPos += nLen;
-        //Received a integrated msgHeader
-        while(_lastPos >= sizeof(netmsg_DataHeader))
-        {
-            //There can be know the all msgData
-            netmsg_DataHeader* header = (netmsg_DataHeader*)_szMsgBuf;
-            //Received a integrated msgData
-            if(_lastPos > header->dataLength)
+            int nLen = pClient->recvData();
+            if(nLen > 0)
             {
-                //The msgData length  is waitting to handle in msgBuf
-                int nSize = _lastPos - header->dataLength;
-                //Deal with net msg
-                onNetMsg(header);
-                //Move the untrated msgData to begin
-                memcpy(_szMsgBuf,_szMsgBuf + header->dataLength,_lastPos - header->dataLength);
-                //Pointer move to begin
-                _lastPos = nSize;
+                while(pClient->hasMsg())
+                {
+                    onNetMsg(pClient->frontMsg());
+                    pClient->popFrontMsg();  
+                }
             }
-            else
-            {
-                //Untreated msgData isn't a integrated msg.
-                return 1;
-            }
+            return nLen;
         }
-        return 1;
+        return 0;
     }
 
     //send Data to server
     int sendData(netmsg_DataHeader* header)
     {
-        int ret = -1;
-        if(isRun() && header)
-        {
-            ret = send(_sock,(const char*)header,header->dataLength,0);
-            if(SOCKET_ERROR == ret){
-                CLose();
-            }
-        }
-        return ret;
+        if(isRun())
+            return pClient->sendData(header);
+        return 0;
+    }   
+    int sendData(const char* pData,int len)
+    {
+        if(isRun())
+            return pClient->sendData(pData,len);
+        return 0;
     }
 };
 

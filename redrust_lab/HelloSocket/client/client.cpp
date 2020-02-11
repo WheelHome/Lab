@@ -1,5 +1,4 @@
 
-#include "messageHeader.hpp"
 #include "EasyTcpClient.hpp"
 #include "CellTimestamp.hpp"
 
@@ -13,7 +12,46 @@ std::atomic_int sendCount(0);
 std::atomic_int readyCount(0);
 std::mutex m;
 
-void recvThread(std::shared_ptr<EasyTcpClient[]> client,int begin,int end)
+class MyClient : public EasyTcpClient
+{
+private:
+
+public:
+    virtual void onNetMsg(netmsg_DataHeader* header)
+    {
+        switch (header->cmd)
+        {
+        case CMD_LOGIN_RESULT:
+        {
+         //   std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
+            break;
+        }
+        case CMD_LOGOUT_RESULT:
+        {
+            break;
+        }
+        case CMD_NEW_USER_JOIN:
+        {
+            break;
+        }
+        default:
+        {
+        }
+        }
+    }
+    MyClient(/* args */)
+    {
+
+    }
+
+    ~MyClient()
+    {
+
+    }
+};
+
+
+void recvThread(std::shared_ptr<MyClient[]> client,int begin,int end)
 {
     while(g_bExit)
     {
@@ -47,7 +85,7 @@ void sendThread(int id)//four thread 1~4
     int c = (cCount) / tCount;
     int begin = (id-1)*c;
     int end  = id*c;
-    std::shared_ptr<EasyTcpClient[]> clients(new EasyTcpClient[cCount]);
+    std::shared_ptr<MyClient[]> clients(new MyClient[cCount]);
     char ip[] = "127.0.0.1";
     for(int i = begin; i < end; i++)
     {
@@ -78,7 +116,7 @@ void sendThread(int id)//four thread 1~4
     {
         for(int i = begin; i < end; i++)
         {
-            if(Time.getEpalsedSecond() >= 0.0)
+            if(Time.getEpalsedSecond() >= 0.00000001)
             {
                 if(clients[i].sendData(&netmsg_Login) == -1)
                 {
@@ -103,6 +141,10 @@ void sendThread(int id)//four thread 1~4
 
 int main()
 {
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    sigprocmask(SIG_BLOCK, &set, NULL);
     //launch ui thread
     std::thread t1(cmdThread);
     t1.detach();    //detach from main thread

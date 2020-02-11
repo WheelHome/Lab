@@ -42,7 +42,7 @@ struct netmsg_Login: public netmsg_DataHeader
     }
     char userName[32];
     char passWord[32];
-    char data[906];
+    char data[30];
 };
 
 struct netmsg_LoginR: public netmsg_DataHeader

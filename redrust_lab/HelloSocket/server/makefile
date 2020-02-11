@@ -4,6 +4,7 @@ TARGET = server
 #源文件
 SRC = server.cpp\
 	  Allocator.cpp
+
 #object文件
 OBJS = $(SRC:.cpp=.o)
 

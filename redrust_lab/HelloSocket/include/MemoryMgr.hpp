@@ -104,20 +104,21 @@ public:
      //   xPrintf("freeMemory: %llx,id=%d\n",(long long unsigned int)pBlock,pBlock->nID);
         if(pBlock->bPool)
         {
-            std::lock_guard<std::mutex> lg(_mutex);
+            _mutex.lock();
             if(--pBlock->nRef != 0)
             {
                 return ;
             }
             pBlock->pNext = _pHeader;
             _pHeader = pBlock;
+            _mutex.unlock();  
             }else
             {
                 if(--pBlock->nRef != 0)
                 {
                     return ;
                 }
-                free(pBlock);    
+                free(pBlock);  
             }
        }
 
@@ -190,8 +191,10 @@ private:
     MemoryAllocator<MEMORY_SIZE_128,MEMORY_BLOCK_NUM> _mem128;
     //MemoryAllocator<MEMORY_SIZE_256,MEMORY_BLOCK_NUM> _mem256;
     //MemoryAllocator<MEMORY_SIZE_512,MEMORY_BLOCK_NUM> _mem512;
-    //MemoryAllocator<MEMORY_SIZE_1024,MEMORY_BLOCK_NUM> _mem1024;
+ //   MemoryAllocator<MEMORY_SIZE_1024,MEMORY_BLOCK_NUM> _mem1024;
     MemoryAlloc* _szAlloc[MAX_MEMORY_SIZE + 1] ;
+
+    std::mutex _mutex;
 
     MemoryMgr(/* args */)
     {
