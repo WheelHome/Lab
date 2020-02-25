@@ -30,7 +30,7 @@ check x
   | otherwise = "x * x = 10"
   where xx = x * x
 
-maxnum :: Integral a => [a] ->a 
+maxnum :: Integral a => [a] ->a
 maxnum [x] = x
 -- maxnum (x:xs) | x > max = x | otherwise = max  where max = maxnum xs
 maxnum (x:xs)  = max x (maxnum xs)
@@ -41,4 +41,8 @@ quickSort [] =[]
 quickSort (x:xs)=
   let smaller=[a|a<-xs,a<=x]
       bigger=[a|a<-xs,a>x]
-  in quickSort smaller ++[x]++quickSort bigger
+  in quickSort smaller ++[x]++ quickSort bigger
+
+-- 把list中小于a的数字筛选出来
+tfilter :: Ord a => a->[a]->[a]
+tfilter a (b) = [x|x<-b,x<a]
