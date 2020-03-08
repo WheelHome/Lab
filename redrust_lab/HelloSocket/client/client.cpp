@@ -23,7 +23,7 @@ public:
         {
         case CMD_LOGIN_RESULT:
         {
-         //   std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
+            //   std::cout << "Received command CMD_LOGIN_RESULT"  << " dataLength:" << header->dataLength << std::endl;
             break;
         }
         case CMD_LOGOUT_RESULT:

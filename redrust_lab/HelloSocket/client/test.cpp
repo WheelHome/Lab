@@ -32,10 +32,10 @@ public:
             r.readDouble(n5);
             std::cout << n5 << std::endl;
 
-             /*   len = cellStream.readArray(b,len);
+            /*   len = cellStream.readArray(b,len);
             for(int i=0;i<len;i++)
             {
-                std::cout << b[i] << std::endl;
+               std::cout << b[i] << std::endl;
             }*/
 
             break;
@@ -73,7 +73,7 @@ int main()
     int a[] = {1,2,3,4,5};
     cellStream.writeArray(a,5);
     cellStream.finish();
- 
+
 
 
     MyClient client;
