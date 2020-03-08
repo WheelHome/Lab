@@ -21,7 +21,7 @@ public:
             if(pClient->sendData(&ret) == 0)
             {
                 //SendBuf is fulling.
-             //   CellLogger::Instance().Info("%d" ,ret);
+                //   CellLogger::Instance().Info("%d" ,ret);
             }
             //pCellServer->addSendTask(pClient,header);
             break;
