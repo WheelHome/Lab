@@ -36,7 +36,7 @@ public:
 
     int sendDataImme()
     {
-        resetDTSend(); 
+        resetDTSend();
         return _sendBuffer.writeToSocket(_sockfd);
     }
 
@@ -75,13 +75,13 @@ public:
         _dtHeart = 0;
     }
 
-    CellClient(SOCKET _sockfd = INVALID_SOCKET) :
+    CellClient(SOCKET sockfd = INVALID_SOCKET) :
         _sendBuffer(SEND_BUFF_SIZE),
         _recvBuffer(RECV_BUFF_SIZE)
     {
         static int n = 1;
         id = n++;
-        this->_sockfd = _sockfd;
+        this->_sockfd = sockfd;
 
         resetDTHeart();
         resetDTSend();
@@ -106,13 +106,16 @@ public:
 
     int sendData(netmsg_DataHeader* header)
     {
-        int ret = 0;
-        const char* pSendData = (const char*)header;
-        if(_sendBuffer.push(pSendData,header->dataLength))
+        return sendData((const char*)header,header->dataLength);
+    }
+
+    int sendData(const char* pData,int len)
+    {
+        if(_sendBuffer.push(pData,len))
         {
-            return header->dataLength;
+            return len;
         }
-        return ret;
+        return -1;
     }
 
     int recvData()
@@ -136,6 +139,11 @@ public:
         {
             _recvBuffer.pop(frontMsg()->dataLength);
         }
+    }
+
+    bool needWrite()
+    {
+        return _sendBuffer.needWrite();
     }
 };
 

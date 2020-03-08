@@ -303,7 +303,7 @@ public:
             onNetMsg(pClient,pClient->frontMsg());
             pClient->popFrontMsg();
         }
-        //pClient->resetDTHeart();
+        pClient->resetDTHeart();
         //Move msgBuf pointer to it's tail
         return 1;
     }

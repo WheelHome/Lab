@@ -11,14 +11,14 @@ private:
     //The current msgBuf end
     long unsigned int _nLast = 0;
     //Buffer length
-    int _nSize = 0;
+    long unsigned int _nSize = 0;
     //Buffer is full.
     int _buffFullCount = 0;
 public:
     CellMsgBuffer(int nSize = 8192)
     {
         _nSize = nSize;
-        _pBuf = new char[_nSize];
+        _pBuf = new char[81920];
     }
 
     ~CellMsgBuffer()
@@ -32,7 +32,7 @@ public:
 
     bool push(const char* pData,int nLen)
     {
-        if(_nLast + nLen > _nSize)
+        if(_nLast + nLen >= _nSize)
         {
             int n = _nLast + nLen - _nSize;
             if(n < 8192)
@@ -41,25 +41,20 @@ public:
             }
             char* buff = new char[_nSize + n];
             memcpy(buff,_pBuf,_nLast);
-            delete _pBuf;
+            delete[] _pBuf;
             _pBuf = buff;
+            _nSize += n;
         }
-        if(_nLast + nLen <= _nSize)
-        {
-            //Copy sending data to sendBuf's tail
-            memcpy(_pBuf + _nLast,pData,nLen);
-            //Move tail of sendBuf to remaining array place
-            _nLast += nLen;
-            if(_nLast == SEND_BUFF_SIZE)
-            {
-                _buffFullCount++;
-            }
-            return true;
-        }else
+        //Copy sending data to sendBuf's tail
+        memcpy(_pBuf + _nLast,pData,nLen);
+        //Move tail of sendBuf to remaining array place
+        _nLast += nLen;
+        if(_nLast == SEND_BUFF_SIZE)
         {
             _buffFullCount++;
+           return false;
         }
-        return false;
+        return true;
     }
 
     int writeToSocket(SOCKET sockfd)
@@ -68,8 +63,11 @@ public:
         if(_nLast > 0 && INVALID_SOCKET != sockfd)
         {
             ret = send(sockfd,_pBuf,_nLast,0);
-            _nLast = 0;
-            _buffFullCount = 0;
+            if(ret > 0 )
+            {
+                _nLast = 0;
+                _buffFullCount = 0;
+            }
         }
         return ret;
     }
@@ -80,10 +78,10 @@ public:
         {
             char* szRecv = _pBuf + _nLast;
             int nLen = recv(sockfd,szRecv,_nSize - _nLast,0);
-            if(nLen <= 0)
+            if(nLen < 0)
             {
                 //std::cout << "Client socket = " << pClient->getSockfd() << " quited." << std::endl;
-                return -1;
+                return nLen;
             }
             _nLast += nLen;
             return nLen;
@@ -102,6 +100,11 @@ public:
             return _nLast >= header->dataLength;
         }
         return false;
+    }
+
+    bool needWrite()
+    {
+        return _nLast > 0;
     }
 
     char* data()
