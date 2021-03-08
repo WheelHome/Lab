@@ -1,16 +1,12 @@
-#include <map>
-#include <string>
-#include <queue>
-#include <set>
 #include <iostream>
-
-std::map<std::string, std::string> cache;
+#include <map>
+#include <vector>
 
 struct Task
 {
     virtual void Handle() = 0;
 
-    template<typename T>
+    template <typename T>
     static Task* GetTask()
     {
         static T task;
@@ -18,98 +14,117 @@ struct Task
     }
 };
 
-struct TaskFlow
+struct TaskNode
 {
-    template<typename T>
-    void Register(T* t)
-    {
-        if (m_task_set.find(t) == m_task_set.end())
-        {
-            m_task_set.emplace(t);
-            m_task.emplace(t);
-        }
-    }
-
-    template<typename T, typename... Args>
-    void Register(T* t, Args... args)
-    {
-        if (m_task_set.find(t) == m_task_set.end())
-        {
-            m_task_set.emplace(t);
-            m_task.emplace(t);
-        }
-        Register(args...);
-    }
-
-    void Run()
-    {
-        while(!m_task.empty())
-        {
-            auto* task = m_task.front();
-            m_task.pop();
-            task->Handle();
-	    m_task_set.erase(task);
-        }
-    }
-    std::set<Task*> m_task_set;
-    std::queue<Task*> m_task;
+    std::vector<TaskNode> m_dep;
+    Task* m_task;
 };
 
-TaskFlow task_flow;
+struct TaskFlow
+{
+    int m_cur_level = 0;
+    std::map<Task*, int64_t> m_level_table;
+
+    void Register(TaskNode node)
+    {
+        m_cur_level = 0;
+        m_level_table.clear();
+        ScanDep({node});
+    }
+
+    void ScanDep(std::vector<TaskNode> node_vect)
+    {
+        std::vector<TaskNode> sub_node;
+        for (auto& data : node_vect)
+        {
+            m_level_table[data.m_task] = m_cur_level;
+            sub_node.insert(sub_node.end(), data.m_dep.begin(), data.m_dep.end());
+        }
+        m_cur_level++;
+        if (!sub_node.empty())
+        {
+            ScanDep(sub_node);
+        }
+    }
+};
+
 
 struct TaskA : Task
 {
-    void Handle()
+    void Handle() override
     {
-        cache["A"] = "A";
-        std::cout << cache["A"] << std::endl;
-    }
-
-    std::string GetData()
-    {
-        return cache["A"];
+        std::cout << "A" << std::endl;
     }
 };
 
 struct TaskB : Task
 {
-    void Handle()
+    void Handle() override
     {
-        auto data = TaskA().GetData();
-        cache["B"] = data + "B";
-        std::cout << cache["B"] << std::endl;
-    }
-
-    std::string GetData()
-    {
-        return cache["B"];
+        std::cout << "B" << std::endl;
     }
 };
 
 struct TaskC : Task
 {
-   void Handle()
+    void Handle() override
     {
-        auto data1 = TaskA().GetData();
-        auto data2 = TaskB().GetData();
-        cache["C"] = data1 + data2 + "C";
-        std::cout << cache["C"] << std::endl;
-    }
-
-    std::string GetData()
-    {
-        return cache["B"];
+        std::cout << "C" << std::endl;
     }
 };
 
+
+struct TaskD : Task
+{
+    void Handle() override
+    {
+        std::cout << "D" << std::endl;
+    }
+};
+
+struct TaskE : Task
+{
+    void Handle() override
+    {
+        std::cout << "F" << std::endl;
+    }
+};
+
+
+std::map<Task*, std::string> task_name_table;
 int main()
 {
-    auto* a = Task::GetTask<TaskA>();
-    auto* b = Task::GetTask<TaskB>();
-    auto* c = Task::GetTask<TaskC>();
-    task_flow.Register(a,b);
-    task_flow.Register(a,b,c);
-    task_flow.Register(b,c);
-    task_flow.Run();
+    TaskNode a;
+    a.m_task = Task::GetTask<TaskA>();
+    task_name_table[a.m_task] = "A";
+
+    TaskNode b;
+    b.m_task = Task::GetTask<TaskB>();
+    task_name_table[b.m_task] = "B";
+
+    TaskNode c;
+    c.m_task = Task::GetTask<TaskC>();
+    task_name_table[c.m_task] = "C";
+    c.m_dep.emplace_back(a);
+    c.m_dep.emplace_back(b);
+
+    TaskNode d;
+    d.m_task = Task::GetTask<TaskD>();
+    task_name_table[d.m_task] = "D";
+    d.m_dep.emplace_back(c);
+
+    TaskNode e;
+    e.m_task = Task::GetTask<TaskE>();
+    task_name_table[e.m_task] = "E";
+    e.m_dep.emplace_back(c);
+    e.m_dep.emplace_back(d);
+
+    TaskFlow taskflow;
+    taskflow.Register(e);
+
+    for (auto& data : taskflow.m_level_table)
+    {
+        std::cout << task_name_table[data.first] << ":" << data.second << std::endl;
+    }
     return 0;
 }
